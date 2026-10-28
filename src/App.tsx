@@ -17,6 +17,7 @@ import { FormsManagerView } from './components/admin/FormsManagerView';
 import { UserManager } from './components/admin/UserManager';
 import { AuditViewer } from './components/admin/AuditViewer';
 import { GlobalDashboard } from './components/admin/GlobalDashboard';
+import { TeamManager } from './components/admin/TeamManager';
 import { AuthScreen } from './components/auth/AuthScreen';
 import { RefreshCw } from 'lucide-react';
 
@@ -301,6 +302,9 @@ export const App: React.FC = () => {
 
                 case 'admin_audit':
                   return <AuditViewer />;
+
+                case 'admin_teams':
+                  return <TeamManager currentUser={currentUser} />;
 
                 default:
                   return null;

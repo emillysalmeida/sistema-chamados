@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { UserProfile, DepartmentMember } from '../types/database';
+import { UserProfile, DepartmentMember, Team, TeamMember } from '../types/database';
 
 export const INITIAL_SUPER_ADMIN_EMAIL = 'emilly.almeida@mtp.com.br';
 
@@ -171,20 +171,28 @@ export const authService = {
     return data || [];
   },
 
-  // Transfer or grant super_admin to another verified user (Sec. 3.3)
+  // Transfer or grant role to another verified user (Sec. 3.3)
   async updateRole(
     targetUserId: string,
-    newRole: 'solicitante' | 'super_admin',
+    newRole: 'solicitante' | 'atendente' | 'super_admin',
     actor: UserProfile,
     justification: string
   ): Promise<boolean> {
     // Safety check: Cannot leave system without super_admin
-    if (newRole === 'solicitante') {
+    if (newRole !== 'super_admin') {
       const { count } = await supabase
         .from('users_profile')
         .select('*', { count: 'exact', head: true })
         .eq('role', 'super_admin');
-      if ((count || 0) <= 1) {
+
+      // Only block if the target user IS currently super_admin and would be the last one
+      const { data: target } = await supabase
+        .from('users_profile')
+        .select('role')
+        .eq('id', targetUserId)
+        .single();
+
+      if (target?.role === 'super_admin' && (count || 0) <= 1) {
         throw new Error('Operação bloqueada: o sistema não pode ficar sem nenhum Administrador Supremo ativo.');
       }
     }
@@ -231,5 +239,207 @@ export const authService = {
       .eq('department_id', departmentId)
       .maybeSingle();
     return !!data;
+  },
+};
+
+// ── Serviço de Equipes ────────────────────────────────────────
+
+export const teamService = {
+  async getTeams(): Promise<Team[]> {
+    const { data, error } = await supabase
+      .from('teams')
+      .select('*, department:departments(id, name, code)')
+      .order('name');
+    if (error) {
+      console.error('Error fetching teams:', error);
+      return [];
+    }
+    // attach member counts
+    const teams: Team[] = [];
+    for (const t of data || []) {
+      const { count } = await supabase
+        .from('team_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('team_id', t.id);
+      teams.push({ ...t, member_count: count || 0 });
+    }
+    return teams;
+  },
+
+  async createTeam(
+    payload: { name: string; description?: string; team_email?: string; department_id: string },
+    actor: UserProfile
+  ): Promise<Team> {
+    const { data, error } = await supabase
+      .from('teams')
+      .insert({
+        name: payload.name.trim(),
+        description: payload.description?.trim() || null,
+        team_email: payload.team_email?.trim() || null,
+        department_id: payload.department_id,
+        is_active: true,
+      })
+      .select('*, department:departments(id, name, code)')
+      .single();
+
+    if (error) throw error;
+
+    await supabase.from('audit_logs').insert({
+      actor_id: actor.id,
+      actor_name: actor.name,
+      action: 'CRIAR_EQUIPE',
+      entity_type: 'teams',
+      entity_id: data.id,
+      details: { name: data.name, department_id: data.department_id },
+    });
+
+    return data as Team;
+  },
+
+  async updateTeam(
+    id: string,
+    updates: { name?: string; description?: string; team_email?: string; is_active?: boolean },
+    actor: UserProfile
+  ): Promise<void> {
+    const { error } = await supabase
+      .from('teams')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw error;
+
+    await supabase.from('audit_logs').insert({
+      actor_id: actor.id,
+      actor_name: actor.name,
+      action: 'ATUALIZAR_EQUIPE',
+      entity_type: 'teams',
+      entity_id: id,
+      details: updates,
+    });
+  },
+
+  async getTeamMembers(teamId: string): Promise<TeamMember[]> {
+    const { data, error } = await supabase
+      .from('team_members')
+      .select('*, user:users_profile(id, name, email, role)')
+      .eq('team_id', teamId);
+    if (error) {
+      console.error('Error fetching team members:', error);
+      return [];
+    }
+    return (data as TeamMember[]) || [];
+  },
+
+  async addTeamMember(
+    teamId: string,
+    userId: string,
+    team: Team,
+    actor: UserProfile
+  ): Promise<void> {
+    // Insert into team_members
+    const { error } = await supabase
+      .from('team_members')
+      .insert({ team_id: teamId, user_id: userId });
+    if (error) throw error;
+
+    // Also ensure user is in department_members for the team's department
+    const { data: existing } = await supabase
+      .from('department_members')
+      .select('id')
+      .eq('department_id', team.department_id)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (!existing) {
+      await supabase
+        .from('department_members')
+        .insert({ department_id: team.department_id, user_id: userId, can_respond: true });
+    }
+
+    await supabase.from('audit_logs').insert({
+      actor_id: actor.id,
+      actor_name: actor.name,
+      action: 'ADICIONAR_MEMBRO_EQUIPE',
+      entity_type: 'team_members',
+      entity_id: `${teamId}:${userId}`,
+      details: { team_id: teamId, department_id: team.department_id },
+    });
+  },
+
+  async removeTeamMember(
+    teamId: string,
+    userId: string,
+    team: Team,
+    actor: UserProfile
+  ): Promise<{ unassignedTickets: number }> {
+    // Remove from team_members
+    const { error } = await supabase
+      .from('team_members')
+      .delete()
+      .eq('team_id', teamId)
+      .eq('user_id', userId);
+    if (error) throw error;
+
+    // Check if user is still member of another team in same department
+    const { count: otherTeams } = await supabase
+      .from('team_members')
+      .select('team_id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .in(
+        'team_id',
+        (
+          await supabase
+            .from('teams')
+            .select('id')
+            .eq('department_id', team.department_id)
+            .eq('is_active', true)
+        ).data?.map((t) => t.id) || []
+      );
+
+    let unassigned = 0;
+    // If no other team in this dept, remove from department_members too
+    if ((otherTeams || 0) === 0) {
+      const { count: assigned } = await supabase
+        .from('tickets')
+        .select('*', { count: 'exact', head: true })
+        .eq('department_id', team.department_id)
+        .eq('assigned_to', userId)
+        .in('status', ['aberto', 'em_andamento', 'aguardando_solicitante']);
+
+      unassigned = assigned || 0;
+      if (unassigned > 0) {
+        await supabase
+          .from('tickets')
+          .update({ assigned_to: null, updated_at: new Date().toISOString() })
+          .eq('department_id', team.department_id)
+          .eq('assigned_to', userId)
+          .in('status', ['aberto', 'em_andamento', 'aguardando_solicitante']);
+      }
+
+      await supabase
+        .from('department_members')
+        .delete()
+        .eq('department_id', team.department_id)
+        .eq('user_id', userId);
+    }
+
+    await supabase.from('audit_logs').insert({
+      actor_id: actor.id,
+      actor_name: actor.name,
+      action: 'REMOVER_MEMBRO_EQUIPE',
+      entity_type: 'team_members',
+      entity_id: `${teamId}:${userId}`,
+      details: { team_id: teamId, unassignedTickets: unassigned },
+    });
+
+    return { unassignedTickets: unassigned };
+  },
+
+  async getUserTeams(userId: string): Promise<TeamMember[]> {
+    const { data, error } = await supabase
+      .from('team_members')
+      .select('*, team:teams(*, department:departments(id, name, code))')
+      .eq('user_id', userId);
+    if (error) return [];
+    return (data as TeamMember[]) || [];
   },
 };

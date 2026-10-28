@@ -1,4 +1,4 @@
-export type UserRole = 'solicitante' | 'super_admin';
+export type UserRole = 'solicitante' | 'atendente' | 'super_admin';
 
 export interface UserProfile {
   id: string;
@@ -243,4 +243,30 @@ export interface UserPreference {
   in_app_notifications: boolean;
   created_at?: string;
   updated_at?: string;
+}
+
+// ── Equipes de Atendimento ────────────────────────────────────
+
+export interface Team {
+  id: string;
+  name: string;
+  description?: string;
+  team_email?: string;
+  department_id: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+  // Joins
+  department?: Department;
+  member_count?: number;
+}
+
+export interface TeamMember {
+  id: string;
+  team_id: string;
+  user_id: string;
+  created_at?: string;
+  // Joins
+  user?: UserProfile;
+  team?: Team;
 }

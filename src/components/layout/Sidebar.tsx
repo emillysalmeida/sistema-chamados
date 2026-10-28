@@ -13,6 +13,7 @@ import {
   Layers,
   Kanban,
   ClipboardList,
+  UsersRound,
 } from 'lucide-react';
 
 export type ActiveTab =
@@ -27,6 +28,7 @@ export type ActiveTab =
   | 'admin_services'
   | 'admin_forms'
   | 'admin_users'
+  | 'admin_teams'
   | 'admin_tickets'
   | 'admin_audit';
 
@@ -46,7 +48,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   openTicketsCount = 0,
 }) => {
   const isSuperAdmin = currentUser.role === 'super_admin';
-  const isAttendant = userDepartments.length > 0;
+  // Atendente: papel explícito OU vinculado a pelo menos um departamento
+  const isAttendant = currentUser.role === 'atendente' || currentUser.role === 'super_admin' || userDepartments.length > 0;
 
   const NavItem = ({
     tab,
@@ -199,6 +202,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <NavItem tab="admin_services" icon={Settings} label="Categorias & Serviços" />
           <NavItem tab="admin_forms" icon={FileText} label="Construtor de Formulários" />
           <NavItem tab="admin_users" icon={Users} label="Usuários & Equipes" />
+          <NavItem tab="admin_teams" icon={UsersRound} label="Gestão de Equipes" />
           <NavItem tab="admin_audit" icon={ShieldAlert} label="Trilha de Auditoria" />
         </div>
       )}
