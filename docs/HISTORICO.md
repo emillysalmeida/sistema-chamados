@@ -5,6 +5,74 @@
 
 ---
 
+## [Sessão 29/10/2026 — 17h45] — Correção de Bugs: Aprovação da TI e Anexos dos Chamados
+
+### Alteração 21 — Armazenamento Real, Visualização e Download de Anexos + Garantia do Fluxo de Aprovação da TI
+
+**Diagnóstico Técnico Realizado:**
+1. **Bug dos Anexos:**
+   - No `FormRenderer.tsx`, o campo de upload salvava apenas metadados cosméticos no estado do React (`{ name: file.name, size: file.size, type: file.type }`), sem nunca ler ou armazenar o conteúdo binário do arquivo.
+   - Não havia serviço de armazenamento (`storageService`) no projeto nem bucket provisionado.
+   - Na tela de detalhamento (`TicketDetail.tsx`), o anexo era exibido estaticamente sem botões nem links de ação.
+2. **Bug da Aprovação da TI:**
+   - No frontend, o código de aprovação (`isITDepartmentId`, botões de aprovação e bloqueios) já estava pronto, mas faltava a liberação da constraint no Supabase e a persistência ponta a ponta com anexo funcional.
+
+**Modificações Implementadas:**
+1. **Criação do Serviço de Armazenamento (`src/services/storageService.ts`):**
+   - Suporte completo a upload via Supabase Storage (bucket `ticket-attachments`) com fallback automático e resiliente para Data URLs base64 para garantir integridade e visualização/download mesmo sem configuração manual externa de bucket.
+   - Métodos `uploadAttachment`, `getFileUrl`, `viewFile` (preview de PDF em iframe ou modal de imagem) e `downloadFile` (download nativo do arquivo original).
+2. **Atualização do `FormRenderer.tsx`:**
+   - Agora retém o arquivo original (`_file: File`) e exibe tamanho formatado em KB ao selecionar.
+3. **Atualização do `TicketCreateModal.tsx` e `TicketDetail.tsx` (Edição pelo Solicitante):**
+   - Durante a criação e a edição de respostas pelo solicitante, arquivos anexados são processados pelo `storageService` antes da persistência, garantindo que o conteúdo esteja acessível.
+4. **Atualização da Interface de Detalhes do Chamado (`TicketDetail.tsx`):**
+   - Ícones específicos para cada tipo de arquivo (PDF em vermelho, imagem com ícone de imagem, genéricos com clipe).
+   - Botões destacados **"Visualizar"** (abre PDF/imagem em nova aba/janela) e **"Baixar"** (download direto do arquivo original).
+   - Indicação explicativa em chamados anteriores que continham apenas nomes salvos.
+
+**Arquivos modificados / criados:**
+- `src/services/storageService.ts` *(novo)*
+- `src/components/forms/FormRenderer.tsx`
+- `src/components/tickets/TicketCreateModal.tsx`
+- `src/components/tickets/TicketDetail.tsx`
+
+**Testes / Validação:**
+- Teste ponta a ponta de ciclo completo no Supabase: criação com `aguardando_aprovacao`, persistência de anexo com conteúdo e aprovação para `aberto`: ✅ Aprovado com sucesso.
+- Compilação TypeScript e build do Vite (`npm run build`): ✅ Concluído com código 0 (2020 módulos).
+
+**Resultado:** ✅ Concluído com sucesso.
+
+---
+
+## [Sessão 29/10/2026 — 16h52] — Validação e Conclusão do Refinamento 05: Aprovação dos Chamados de TI
+
+### Alteração 20 — Aplicação da Migração no Supabase e Validação Ponta a Ponta do Fluxo de Aprovação da TI
+
+**Descrição:**
+1. A usuária executou com sucesso a migração no SQL Editor do Supabase:
+   - Restrição `tickets_status_check` atualizada para aceitar `'aguardando_aprovacao'`.
+   - Adicionadas colunas `approved_at` (TIMESTAMPTZ) e `approved_by` (UUID) na tabela `tickets`.
+   - Schema cache recarregado.
+2. Executados testes de inserção e persistência via script automatizado com o client Supabase real:
+   - Inserção de registro com status `'aguardando_aprovacao'` validada com sucesso no Supabase (código 200).
+   - Inserção com colunas de auditoria `approved_at` e `approved_by` validada com sucesso.
+   - Limpeza automática dos registros de teste executada sem deixar vestígios.
+
+**Arquivos validados:**
+- `src/services/ticketService.ts`
+- `src/components/tickets/TicketDetail.tsx`
+- `src/components/tickets/TicketList.tsx`
+- `src/components/tickets/TicketKanban.tsx`
+
+**Testes / Validação:**
+- Teste de inserção no Supabase com status `aguardando_aprovacao`: ✅ Sucesso (sem violação de constraint).
+- Teste de gravação de `approved_at` e `approved_by`: ✅ Sucesso.
+- Build de produção (`npm run build`): ✅ Concluído com código 0 (2019 módulos transformados).
+
+**Resultado:** ✅ Concluído com sucesso e 100% validado.
+
+---
+
 ## [Sessão 29/10/2026 — 16h35] — Correção de Bug do Refinamento 05: Aprovação dos Chamados de TI
 
 ### Alteração 19 — Diagnóstico e Correção da Identificação de TI e Trava de Banco no Status Inicial

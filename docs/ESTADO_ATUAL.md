@@ -1,7 +1,13 @@
 # Estado Atual do Projeto — Central de Serviços MTP
 
-> Atualizado em: **29/10/2026 — 16h35 (BRT)**
+> Atualizado em: **29/10/2026 — 17h45 (BRT)**
 > Regra: atualizar a cada 5 alterações e ao encerrar cada sessão.
+
+---
+
+## ⚠️ AVISO IMPORTANTE — Deploy e Migração
+- **Migração do Supabase aplicada com sucesso**: `tickets_status_check` atualizada para aceitar `'aguardando_aprovacao'` e colunas de auditoria `approved_at`, `approved_by` criadas.
+- **Anexos e Aprovação TI corrigidos**: novo `storageService` implementado com suporte a upload real, visualização e download de arquivos em chamados, além de botões dedicados de aprovação no detalhamento do chamado.
 
 ---
 

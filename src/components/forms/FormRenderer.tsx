@@ -242,9 +242,16 @@ export const FormRenderer: React.FC<FormRendererProps> = ({
             <Upload size={22} color="var(--text-muted)" style={{ margin: '0 auto 6px' }} />
             <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
               {val?.name ? (
-                <span style={{ fontWeight: 600, color: 'var(--mtp-navy-primary)' }}>
-                  Arquivo selecionado: {val.name}
-                </span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center' }}>
+                  <span style={{ fontWeight: 600, color: 'var(--mtp-navy-primary)' }}>
+                    Arquivo selecionado: {val.name}
+                  </span>
+                  {val.size && (
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                      ({Math.round(val.size / 1024)} KB)
+                    </span>
+                  )}
+                </div>
               ) : (
                 'Clique para anexar arquivo ou arraste até aqui'
               )}
@@ -263,10 +270,12 @@ export const FormRenderer: React.FC<FormRendererProps> = ({
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) {
+                  // Guardamos o objeto real File em _file para processamento assíncrono de upload
                   onChange(field.id, {
                     name: file.name,
                     size: file.size,
                     type: file.type,
+                    _file: file,
                   });
                 }
               }}
@@ -274,7 +283,7 @@ export const FormRenderer: React.FC<FormRendererProps> = ({
             <label
               htmlFor={`file_upload_${field.id}`}
               className="btn btn-secondary btn-sm"
-              style={{ marginTop: 10, cursor: 'pointer' }}
+              style={{ marginTop: 10, cursor: disabled ? 'not-allowed' : 'pointer' }}
             >
               Escolher Arquivo
             </label>

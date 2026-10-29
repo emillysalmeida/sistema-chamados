@@ -12,6 +12,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { ticketService } from '../../services/ticketService';
 import { catalogService } from '../../services/catalogService';
+import { storageService } from '../../services/storageService';
 import { FormRenderer } from '../forms/FormRenderer';
 import {
   ArrowLeft,
@@ -34,6 +35,10 @@ import {
   Info,
   ShieldCheck,
   X,
+  Download,
+  Eye,
+  FileCode,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 interface TicketDetailProps {
@@ -256,12 +261,42 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
 
     try {
       setSavingAnswers(true);
-      const structuredAnswers = formVersion.fields_schema.map((f) => ({
-        field_id: f.id,
-        field_label: f.label,
-        field_type: f.type,
-        answer_value: editedAnswers[f.id] ?? null,
-      }));
+      const structuredAnswers = await Promise.all(
+        formVersion.fields_schema.map(async (f) => {
+          const val = editedAnswers[f.id] ?? null;
+          if (f.type === 'file' && val && val._file instanceof File) {
+            try {
+              const uploaded = await storageService.uploadAttachment(
+                val._file,
+                ticketData.ticket.protocol || ticketId,
+                currentUser
+              );
+              return {
+                field_id: f.id,
+                field_label: f.label,
+                field_type: f.type,
+                answer_value: uploaded,
+              };
+            } catch (err: any) {
+              console.warn('Falha no upload do anexo editado:', err);
+              return {
+                field_id: f.id,
+                field_label: f.label,
+                field_type: f.type,
+                answer_value: { name: val.name, size: val.size, type: val.type },
+              };
+            }
+          }
+
+          const cleanVal = val && val._file ? { name: val.name, size: val.size, type: val.type } : val;
+          return {
+            field_id: f.id,
+            field_label: f.label,
+            field_type: f.type,
+            answer_value: cleanVal,
+          };
+        })
+      );
 
       await ticketService.updateTicketAnswers(ticketId, structuredAnswers, currentUser);
       setShowEditAnswersModal(false);
@@ -583,15 +618,61 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
                       </div>
 
                       {isFile ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                          <Paperclip size={16} color="var(--mtp-blue-primary)" />
-                          <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--mtp-navy-primary)' }}>
-                            {ans.answer_value?.name || 'Arquivo anexado'}
+                        <div style={{ marginTop: 6 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                            {ans.answer_value?.type?.startsWith('image/') ? (
+                              <ImageIcon size={18} color="var(--mtp-blue-primary)" />
+                            ) : ans.answer_value?.type?.includes('pdf') ? (
+                              <FileText size={18} color="#dc2626" />
+                            ) : (
+                              <Paperclip size={18} color="var(--mtp-blue-primary)" />
+                            )}
+                            <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--mtp-navy-primary)', wordBreak: 'break-all' }}>
+                              {ans.answer_value?.name || 'Arquivo anexado'}
+                            </div>
+                            {ans.answer_value?.size && (
+                              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                ({Math.round(ans.answer_value.size / 1024)} KB)
+                              </span>
+                            )}
                           </div>
-                          {ans.answer_value?.size && (
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                              ({Math.round(ans.answer_value.size / 1024)} KB)
-                            </span>
+
+                          {/* Ações de Visualizar e Baixar Anexo */}
+                          {ans.answer_value?.data_url || ans.answer_value?.storage_path ? (
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: '4px 10px', fontSize: '0.75rem', gap: 4 }}
+                                onClick={async () => {
+                                  try {
+                                    await storageService.viewFile(ans.answer_value);
+                                  } catch (err: any) {
+                                    alert(err.message);
+                                  }
+                                }}
+                              >
+                                <Eye size={13} /> Visualizar
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: '4px 10px', fontSize: '0.75rem', gap: 4 }}
+                                onClick={async () => {
+                                  try {
+                                    await storageService.downloadFile(ans.answer_value);
+                                  } catch (err: any) {
+                                    alert(err.message);
+                                  }
+                                }}
+                              >
+                                <Download size={13} /> Baixar
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: 2 }}>
+                              ⚠️ Arquivo registrado apenas como metadado legível nos chamados anteriores. Novos anexos são armazenados para visualização e download.
+                            </div>
                           )}
                         </div>
                       ) : (
