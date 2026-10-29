@@ -176,7 +176,7 @@ export const authService = {
     targetUserId: string,
     newRole: 'solicitante' | 'atendente' | 'super_admin',
     actor: UserProfile,
-    justification: string
+    justification?: string
   ): Promise<boolean> {
     // Safety check: Cannot leave system without super_admin
     if (newRole !== 'super_admin') {
@@ -210,7 +210,7 @@ export const authService = {
       action: 'ALTERAR_PAPEL_USUARIO',
       entity_type: 'users_profile',
       entity_id: targetUserId,
-      details: { newRole, justification },
+      details: { newRole, justification: justification || '' },
     });
 
     return true;

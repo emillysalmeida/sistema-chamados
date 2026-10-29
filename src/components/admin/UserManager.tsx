@@ -6,7 +6,6 @@ import {
   ShieldCheck,
   User,
   Users,
-  ShieldAlert,
   Headphones,
   ArrowRightLeft,
   UsersRound,
@@ -38,7 +37,6 @@ export const UserManager: React.FC<UserManagerProps> = ({ currentUser, onRefresh
   // Role change state
   const [targetUser, setTargetUser] = useState<UserProfile | null>(null);
   const [newRole, setNewRole] = useState<'solicitante' | 'atendente' | 'super_admin'>('solicitante');
-  const [justification, setJustification] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   // Expanded user detail
@@ -78,7 +76,6 @@ export const UserManager: React.FC<UserManagerProps> = ({ currentUser, onRefresh
   const openRoleModal = (u: UserProfile) => {
     setTargetUser(u);
     setNewRole(u.role);
-    setJustification('');
   };
 
   const handleRoleChangeSubmit = async (e: React.FormEvent) => {
@@ -91,12 +88,11 @@ export const UserManager: React.FC<UserManagerProps> = ({ currentUser, onRefresh
 
     try {
       setSubmitting(true);
-      await authService.updateRole(targetUser.id, newRole, currentUser, justification);
+      await authService.updateRole(targetUser.id, newRole, currentUser);
       setTargetUser(null);
-      setJustification('');
       await loadUsers();
       onRefreshCurrentUser();
-      alert('Papel de acesso atualizado com sucesso e registrado na trilha de auditoria.');
+      alert('Papel de acesso atualizado com sucesso.');
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -381,36 +377,6 @@ export const UserManager: React.FC<UserManagerProps> = ({ currentUser, onRefresh
                   {ROLE_DESCRIPTIONS[newRole]}
                 </div>
               )}
-            </div>
-
-            <div style={{ marginBottom: 18 }}>
-              <label className="label label-required">Justificativa (obrigatória para auditoria)</label>
-              <textarea
-                className="textarea"
-                placeholder="Descreva o motivo da alteração de papel..."
-                value={justification}
-                onChange={(e) => setJustification(e.target.value)}
-                required
-              />
-            </div>
-
-            <div
-              style={{
-                background: '#fffbeb',
-                border: '1px solid #fde68a',
-                borderRadius: 'var(--radius-md)',
-                padding: '10px 14px',
-                fontSize: '0.8rem',
-                color: '#92400e',
-                marginBottom: 18,
-                display: 'flex',
-                gap: 8,
-              }}
-            >
-              <ShieldAlert size={18} style={{ flexShrink: 0 }} />
-              <div>
-                <strong>Atenção:</strong> Toda alteração é registrada na trilha de auditoria. Não é possível deixar o sistema sem nenhum Super Admin ativo.
-              </div>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>

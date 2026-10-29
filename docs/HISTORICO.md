@@ -460,3 +460,40 @@ CREATE POLICY "authenticated_read_team_members" ON team_members FOR SELECT USING
 
 ---
 
+
+---
+
+## [Sessão 29/10/2026 — 10h08] — Correção: troca de papel quebrava com erro de constraint
+
+### Alteração 8 — Corrigir erro `users_profile_role_check` e remover justificativa obrigatória
+
+**Problema identificado:**
+- Ao tentar atribuir o papel `atendente`, o Supabase retornava `new row for relation "users_profile" violates check constraint "users_profile_role_check"`.
+- Causa: a tabela `users_profile` no banco tem um `CHECK constraint` que aceita apenas `'solicitante'` e `'super_admin'`. O novo valor `'atendente'` precisa ser adicionado ao constraint diretamente no Supabase.
+- Adicionalmente, o campo de justificativa foi removido do modal de alteração de papel, conforme solicitado.
+
+**Correções no frontend:**
+- `src/services/authService.ts` — parâmetro `justification` tornado opcional (`justification?: string`).
+- `src/components/admin/UserManager.tsx` — removido state `justification`, import `ShieldAlert` e o campo textarea do modal. Chamada do `updateRole` simplificada (sem justificativa).
+
+**Correção necessária no Supabase (obrigatória para funcionar):**
+Execute no Editor SQL do Supabase:
+
+```sql
+ALTER TABLE users_profile DROP CONSTRAINT IF EXISTS users_profile_role_check;
+ALTER TABLE users_profile
+  ADD CONSTRAINT users_profile_role_check
+  CHECK (role IN ('solicitante', 'atendente', 'super_admin'));
+```
+
+**Arquivos modificados:**
+- `src/services/authService.ts`
+- `src/components/admin/UserManager.tsx`
+
+**Testes / Validação:** Build ✅ (`tsc -b && vite build` — zero erros, 2021 módulos).
+
+**Resultado:** ✅ Frontend corrigido. Depende da execução do SQL no Supabase para funcionar em produção.
+
+**Pendências:** Executar o SQL acima no banco antes do próximo teste.
+
+---
