@@ -11,6 +11,32 @@ import {
 import { notificationService } from './notificationService';
 import { authService } from './authService';
 
+// Helper to identify IT department by internal ID and code prefix (Refinamento 05)
+export const isITDepartmentId = (
+  departmentId: string,
+  deptObj?: { id: string; code?: string; name?: string } | null
+): boolean => {
+  // Known internal ID of Tecnologia da Informação
+  const KNOWN_IT_IDS = [
+    '57f09d6e-9b4c-43d6-b010-1365503c60d0',
+  ];
+  if (KNOWN_IT_IDS.includes(departmentId)) return true;
+  if (deptObj && KNOWN_IT_IDS.includes(deptObj.id)) return true;
+
+  const rawCode = (deptObj?.code || '').trim().toUpperCase();
+  if (
+    rawCode === 'TI' ||
+    rawCode.startsWith('TI ') ||
+    rawCode.startsWith('TI-') ||
+    rawCode.startsWith('TI_') ||
+    rawCode.startsWith('TI0')
+  ) {
+    return true;
+  }
+
+  return false;
+};
+
 export const ticketService = {
   // Generate friendly unique protocol e.g. "TI-000001"
   async generateProtocol(departmentId: string): Promise<string> {
@@ -44,9 +70,9 @@ export const ticketService = {
       .from('departments')
       .select('id, code, name')
       .eq('id', payload.department_id)
-      .single();
+      .maybeSingle();
 
-    const isITDept = dept?.code?.toUpperCase() === 'TI';
+    const isITDept = isITDepartmentId(payload.department_id, dept);
     const initialStatus: TicketStatus = isITDept ? 'aguardando_aprovacao' : 'aberto';
 
     // 1. Insert ticket
@@ -588,19 +614,34 @@ export const ticketService = {
     }
 
     const now = new Date().toISOString();
-    const { data: updated, error } = await supabase
+    // Try update with approval columns, fallback gracefully if columns not yet in DB schema
+    let updatePayload: any = {
+      status: 'aberto',
+      updated_at: now,
+    };
+
+    let { data: updated, error } = await supabase
       .from('tickets')
       .update({
-        status: 'aberto',
+        ...updatePayload,
         approved_at: now,
         approved_by: actor.id,
-        updated_at: now,
       })
       .eq('id', ticketId)
       .select('*, department:departments(*), service_type:service_types(*), assignee:users_profile!tickets_assigned_to_fkey(*)')
-      .single();
+      .maybeSingle();
 
-    if (error) throw error;
+    if (error) {
+      // Fallback if approved_at / approved_by columns do not exist yet in Postgres
+      const fallback = await supabase
+        .from('tickets')
+        .update(updatePayload)
+        .eq('id', ticketId)
+        .select('*, department:departments(*), service_type:service_types(*), assignee:users_profile!tickets_assigned_to_fkey(*)')
+        .single();
+      if (fallback.error) throw fallback.error;
+      updated = fallback.data;
+    }
 
     // Timeline event
     await supabase.from('ticket_events').insert({

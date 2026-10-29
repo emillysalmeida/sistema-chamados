@@ -1,6 +1,6 @@
 # Estado Atual do Projeto — Central de Serviços MTP
 
-> Atualizado em: **29/10/2026 — 15h55 (BRT)**
+> Atualizado em: **29/10/2026 — 16h35 (BRT)**
 > Regra: atualizar a cada 5 alterações e ao encerrar cada sessão.
 
 ---
@@ -200,11 +200,12 @@ Sistema Abertura de Chamados/
 
 | # | Pendência | Prioridade |
 |---|---|---|
-| 1 | **[GitHub]** Adicionar Secrets: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | 🔴 Alta |
-| 2 | **[GitHub]** Configurar Pages source = "GitHub Actions" | 🔴 Alta |
-| 3 | **[Vercel]** Definir env vars: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | 🔴 Alta |
-| 4 | Executar commit e push das alterações acumuladas (Etapa 2 + Refinamentos 03, 04 e 05) | 🔴 Alta |
-| 5 | `src/lib/supabase.ts` possui fallback hardcoded da chave anon — avaliar remoção futura | 🟡 Baixa |
+| 1 | **[Supabase SQL]** Executar script para atualizar `tickets_status_check` no banco para aceitar `'aguardando_aprovacao'` | 🔴 Crítica |
+| 2 | **[GitHub]** Adicionar Secrets: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | 🔴 Alta |
+| 3 | **[GitHub]** Configurar Pages source = "GitHub Actions" | 🔴 Alta |
+| 4 | **[Vercel]** Definir env vars: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | 🔴 Alta |
+| 5 | Executar commit e push das alterações acumuladas (Etapa 2 + Refinamentos 03, 04 e 05) | 🔴 Alta |
+| 6 | `src/lib/supabase.ts` possui fallback hardcoded da chave anon — avaliar remoção futura | 🟡 Baixa |
 
 ---
 

@@ -5,6 +5,35 @@
 
 ---
 
+## [Sessão 29/10/2026 — 16h35] — Correção de Bug do Refinamento 05: Aprovação dos Chamados de TI
+
+### Alteração 19 — Diagnóstico e Correção da Identificação de TI e Trava de Banco no Status Inicial
+
+**Causas identificadas no diagnóstico:**
+1. **Divergência de código do departamento:** No banco de dados Supabase real, o departamento de TI foi cadastrado com `code = "TI 0001"` (e ID interno `'57f09d6e-9b4c-43d6-b010-1365503c60d0'`). A checagem anterior `dept?.code === 'TI'` avaliava como `false`, classificando a abertura no fluxo comum (`status: 'aberto'`).
+2. **Constraint no banco Supabase:** A tabela `public.tickets` possui a restrição PostgreSQL `tickets_status_check`, que rejeitava o novo valor `'aguardando_aprovacao'` com erro 23514.
+3. **Colunas ausentes no schema:** O método `approveTicket` tentava gravar em colunas `approved_at` e `approved_by` antes de sua criação no banco.
+
+**Modificações implementadas:**
+1. Criada a função utilitária `isITDepartmentId(departmentId, deptObj)` em `src/services/ticketService.ts`:
+   - Checa pelo identificador interno conhecido da TI (`57f09d6e-9b4c-43d6-b010-1365503c60d0`).
+   - Checa por prefixos de chave de protocolo que identificam a caixa (`TI`, `TI 0001`, `TI-`, `TI_`, etc.).
+   - Garante que todo novo chamado aberto no departamento de TI inicie obrigatoriamente com `status: 'aguardando_aprovacao'`.
+2. Em `approveTicket`:
+   - Adicionado fallback transparente na gravação de aprovação caso as colunas `approved_at` e `approved_by` ainda não tenham sido migradas no PostgreSQL, gravando em `ticket_events` e garantindo que o status mude para `'aberto'` e notifique o solicitante sem travar a interface.
+3. Disponibilizado o script SQL incremental para atualizar `tickets_status_check` no Supabase.
+
+**Arquivos modificados:**
+- `src/services/ticketService.ts`
+
+**Testes / Validação:**
+- Compilação TypeScript e build do Vite (`npm run build`) executados com sucesso (código 0, 2019 módulos transformados).
+- Verificação via script Node dos departamentos e chamados existentes no Supabase.
+
+**Resultado:** ✅ Concluída no código (requer execução do SQL no Supabase para liberar o valor no banco).
+
+---
+
 ## [Sessão 29/10/2026 — 15h50] — Refinamento 05: Fluxo de Aprovação dos Chamados de TI
 
 ### Alteração 18 — Fluxo de Aprovação Obrigatória para Todos os Chamados da TI
