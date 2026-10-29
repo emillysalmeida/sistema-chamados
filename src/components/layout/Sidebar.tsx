@@ -14,6 +14,7 @@ import {
   Kanban,
   ClipboardList,
   UsersRound,
+  BookOpen,
 } from 'lucide-react';
 
 export type ActiveTab =
@@ -24,9 +25,7 @@ export type ActiveTab =
   | 'atendimento_meus'
   | 'atendimento_kanban'
   | 'admin_overview'
-  | 'admin_departments'
-  | 'admin_services'
-  | 'admin_forms'
+  | 'admin_catalog'
   | 'admin_users'
   | 'admin_teams'
   | 'admin_tickets'
@@ -198,9 +197,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
           <NavItem tab="admin_overview" icon={BarChart3} label="Visão Geral & Métricas" />
           <NavItem tab="admin_tickets" icon={Layers} label="Chamados Globais" />
-          <NavItem tab="admin_departments" icon={FolderKanban} label="Departamentos / Caixas" />
-          <NavItem tab="admin_services" icon={Settings} label="Categorias & Serviços" />
-          <NavItem tab="admin_forms" icon={FileText} label="Construtor de Formulários" />
+          <NavItem tab="admin_catalog" icon={BookOpen} label="Catálogo de Serviços" />
           <NavItem tab="admin_users" icon={Users} label="Usuários & Equipes" />
           <NavItem tab="admin_teams" icon={UsersRound} label="Gestão de Equipes" />
           <NavItem tab="admin_audit" icon={ShieldAlert} label="Trilha de Auditoria" />

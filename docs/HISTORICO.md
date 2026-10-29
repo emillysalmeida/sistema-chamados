@@ -5,6 +5,125 @@
 
 ---
 
+## [Sessão 29/10/2026 — 11h14] — Refinamento 03: Catálogo de Serviços Integrado
+
+### Alteração 14 — Novo componente `CatalogAdmin.tsx`: administração integrada do catálogo
+
+**Descrição:**
+Criado `src/components/admin/CatalogAdmin.tsx` — experiência administrativa unificada que substitui a navegação entre três telas separadas (Departamentos, Categorias & Serviços, Construtor de Formulários).
+
+Fluxo implementado: **Departamento → Serviços/Categorias → Formulário (FormBuilder integrado)**
+
+Funcionalidades incluídas:
+- **Nível 1 (Departamentos):** listagem em cards com status, contadores, botões Gerenciar Serviços, Equipe e Arquivar. Criação via modal.
+- **Nível 2 (Serviços & Categorias):** breadcrumb com retorno de contexto; serviços agrupados por categoria; badge de publicação e versão do formulário por serviço; criação e edição de serviços; criação de categorias; acesso direto ao formulário do serviço.
+- **Nível 3 (FormBuilder):** construtor de formulários integrado sem sair da tela; breadcrumb mostra serviço de contexto; ao criar novo formulário a partir de serviço sem form, vinculação automática após salvar.
+- Gestão de membros da equipe de atendimento acessível em todos os níveis.
+- Aviso visual quando não há formulários disponíveis para criar serviços.
+- Preserva completamente o `FormBuilder` existente — não foi modificado.
+- Preserva relacionamentos com chamados existentes — nenhuma migração de dados.
+
+**Arquivos criados:**
+- `src/components/admin/CatalogAdmin.tsx` — novo componente integrado (600+ linhas).
+
+**Testes / Validação:** Build ✅ (2019 módulos, zero erros TypeScript).
+
+**Resultado:** ✅ Concluída.
+
+---
+
+### Alteração 15 — `Sidebar.tsx`: entrada "Catálogo de Serviços" + tipo `admin_catalog`
+
+**Descrição:**
+- Adicionado `'admin_catalog'` ao union type `ActiveTab`.
+- Menu administrativo: substituídas as entradas "Departamentos / Caixas", "Categorias & Serviços" e "Construtor de Formulários" por uma única entrada **"Catálogo de Serviços"** com ícone `BookOpen`.
+- Importado `BookOpen` do Lucide React.
+- As tabs antigas (`admin_departments`, `admin_services`, `admin_forms`) foram removidas do tipo e do menu, mas as rotas permanecem no `App.tsx` como caminho de fallback.
+
+**Arquivos modificados:**
+- `src/components/layout/Sidebar.tsx`
+
+**Testes / Validação:** Build ✅.
+
+**Resultado:** ✅ Concluída.
+
+---
+
+### Alteração 16 — `App.tsx`: rota `admin_catalog` → `CatalogAdmin`
+
+**Descrição:**
+- Import de `CatalogAdmin` adicionado.
+- `case 'admin_catalog'` adicionado ao switch de rotas, renderizando `<CatalogAdmin currentUser={currentUser} />`.
+- As rotas antigas (`admin_departments`, `admin_services`, `admin_forms`) foram mantidas no switch para compatibilidade e fallback, mas removidas do menu lateral.
+
+**Arquivos modificados:**
+- `src/App.tsx`
+
+**Testes / Validação:** Build ✅.
+
+**Resultado:** ✅ Concluída.
+
+---
+
+**Validação do Refinamento 03:**
+
+| Critério | Status |
+|---|---|
+| Super Admin cria departamento | ✅ Modal funcional com código de protocolo |
+| Super Admin cadastra serviço no departamento | ✅ Modal com formulário, categoria opcional, publicação configurável |
+| Vincula e acessa formulário do serviço | ✅ Botão "Formulário" abre `FormBuilder` com contexto pré-carregado |
+| Serviço visível no portal após publicação | ✅ `is_published: true` preservado |
+| Serviços e formulários anteriores funcionam | ✅ Nenhum dado alterado |
+| Chamados existentes preservam vínculos | ✅ Nenhuma migração de dados |
+| Permissões administrativas corretas | ✅ `CatalogAdmin` só está no menu de Super Admin |
+| Build e TypeScript sem erros | ✅ 2019 módulos, exit code 0 |
+
+---
+
+## [Sessão 29/10/2026 — 10h57] — Correções de banco de dados (Supabase)
+
+### Alteração 12 — Criação das tabelas `teams` e `team_members` no Supabase
+
+**Descrição:**
+A aplicação tentava inserir em `public.teams` mas a tabela não existia, resultando em erro
+`"Could not find the table 'public.teams' in the schema cache"`.
+
+SQL executado manualmente no Supabase SQL Editor:
+- Criação de `public.teams` (id, name, description, team_email, department_id, is_active, created_at, updated_at).
+- Criação de `public.team_members` (id, team_id, user_id, added_at, UNIQUE team_id+user_id).
+- RLS habilitado em ambas as tabelas.
+- Políticas: Super Admin com acesso total; Atendente com leitura das equipes/membros do seu departamento.
+- Atualização da constraint `users_profile_role_check` para aceitar `'solicitante' | 'atendente' | 'super_admin'`.
+
+**Arquivos modificados:**
+- Nenhum arquivo de código alterado — correção aplicada diretamente no banco via SQL.
+
+**Testes / Validação:** Equipe criada com sucesso após execução do SQL (validado pela usuária).
+
+**Resultado:** ✅ Concluída.
+
+---
+
+### Alteração 13 — Renomear coluna `email` → `team_email` na tabela `teams`
+
+**Descrição:**
+A tabela `teams` foi criada com a coluna chamada `email`, mas o código (`TeamManager.tsx` e `authService.ts` / `teamService`) referencia `team_email`. Isso gerava o erro:
+`"Could not find the 'team_email' column of 'teams' in the schema cache"`.
+
+SQL executado no Supabase SQL Editor:
+```sql
+ALTER TABLE public.teams RENAME COLUMN email TO team_email;
+```
+
+**Arquivos modificados:**
+- Nenhum arquivo de código alterado — correção aplicada diretamente no banco.
+
+**Testes / Validação:** Criação de equipe bem-sucedida após renomeação da coluna.
+
+**Resultado:** ✅ Concluída.
+
+---
+
 ## [Sessão 29/10/2026] — Refinamento 01 · Etapa 2: Atribuição, Transferência e Correção de Deploy
 
 ### Alteração 9 — `claimTicket` reescrito: transferência livre entre atendentes, sem mudança automática de status
@@ -247,6 +366,125 @@ Preparação completa do projeto para versionamento e publicação no GitHub. O 
 
 ---
 
+## [Sessão 29/10/2026 — 11h14] — Refinamento 03: Catálogo de Serviços Integrado
+
+### Alteração 14 — Novo componente `CatalogAdmin.tsx`: administração integrada do catálogo
+
+**Descrição:**
+Criado `src/components/admin/CatalogAdmin.tsx` — experiência administrativa unificada que substitui a navegação entre três telas separadas (Departamentos, Categorias & Serviços, Construtor de Formulários).
+
+Fluxo implementado: **Departamento → Serviços/Categorias → Formulário (FormBuilder integrado)**
+
+Funcionalidades incluídas:
+- **Nível 1 (Departamentos):** listagem em cards com status, contadores, botões Gerenciar Serviços, Equipe e Arquivar. Criação via modal.
+- **Nível 2 (Serviços & Categorias):** breadcrumb com retorno de contexto; serviços agrupados por categoria; badge de publicação e versão do formulário por serviço; criação e edição de serviços; criação de categorias; acesso direto ao formulário do serviço.
+- **Nível 3 (FormBuilder):** construtor de formulários integrado sem sair da tela; breadcrumb mostra serviço de contexto; ao criar novo formulário a partir de serviço sem form, vinculação automática após salvar.
+- Gestão de membros da equipe de atendimento acessível em todos os níveis.
+- Aviso visual quando não há formulários disponíveis para criar serviços.
+- Preserva completamente o `FormBuilder` existente — não foi modificado.
+- Preserva relacionamentos com chamados existentes — nenhuma migração de dados.
+
+**Arquivos criados:**
+- `src/components/admin/CatalogAdmin.tsx` — novo componente integrado (600+ linhas).
+
+**Testes / Validação:** Build ✅ (2019 módulos, zero erros TypeScript).
+
+**Resultado:** ✅ Concluída.
+
+---
+
+### Alteração 15 — `Sidebar.tsx`: entrada "Catálogo de Serviços" + tipo `admin_catalog`
+
+**Descrição:**
+- Adicionado `'admin_catalog'` ao union type `ActiveTab`.
+- Menu administrativo: substituídas as entradas "Departamentos / Caixas", "Categorias & Serviços" e "Construtor de Formulários" por uma única entrada **"Catálogo de Serviços"** com ícone `BookOpen`.
+- Importado `BookOpen` do Lucide React.
+- As tabs antigas (`admin_departments`, `admin_services`, `admin_forms`) foram removidas do tipo e do menu, mas as rotas permanecem no `App.tsx` como caminho de fallback.
+
+**Arquivos modificados:**
+- `src/components/layout/Sidebar.tsx`
+
+**Testes / Validação:** Build ✅.
+
+**Resultado:** ✅ Concluída.
+
+---
+
+### Alteração 16 — `App.tsx`: rota `admin_catalog` → `CatalogAdmin`
+
+**Descrição:**
+- Import de `CatalogAdmin` adicionado.
+- `case 'admin_catalog'` adicionado ao switch de rotas, renderizando `<CatalogAdmin currentUser={currentUser} />`.
+- As rotas antigas (`admin_departments`, `admin_services`, `admin_forms`) foram mantidas no switch para compatibilidade e fallback, mas removidas do menu lateral.
+
+**Arquivos modificados:**
+- `src/App.tsx`
+
+**Testes / Validação:** Build ✅.
+
+**Resultado:** ✅ Concluída.
+
+---
+
+**Validação do Refinamento 03:**
+
+| Critério | Status |
+|---|---|
+| Super Admin cria departamento | ✅ Modal funcional com código de protocolo |
+| Super Admin cadastra serviço no departamento | ✅ Modal com formulário, categoria opcional, publicação configurável |
+| Vincula e acessa formulário do serviço | ✅ Botão "Formulário" abre `FormBuilder` com contexto pré-carregado |
+| Serviço visível no portal após publicação | ✅ `is_published: true` preservado |
+| Serviços e formulários anteriores funcionam | ✅ Nenhum dado alterado |
+| Chamados existentes preservam vínculos | ✅ Nenhuma migração de dados |
+| Permissões administrativas corretas | ✅ `CatalogAdmin` só está no menu de Super Admin |
+| Build e TypeScript sem erros | ✅ 2019 módulos, exit code 0 |
+
+---
+
+## [Sessão 29/10/2026 — 10h57] — Correções de banco de dados (Supabase)
+
+### Alteração 12 — Criação das tabelas `teams` e `team_members` no Supabase
+
+**Descrição:**
+A aplicação tentava inserir em `public.teams` mas a tabela não existia, resultando em erro
+`"Could not find the table 'public.teams' in the schema cache"`.
+
+SQL executado manualmente no Supabase SQL Editor:
+- Criação de `public.teams` (id, name, description, team_email, department_id, is_active, created_at, updated_at).
+- Criação de `public.team_members` (id, team_id, user_id, added_at, UNIQUE team_id+user_id).
+- RLS habilitado em ambas as tabelas.
+- Políticas: Super Admin com acesso total; Atendente com leitura das equipes/membros do seu departamento.
+- Atualização da constraint `users_profile_role_check` para aceitar `'solicitante' | 'atendente' | 'super_admin'`.
+
+**Arquivos modificados:**
+- Nenhum arquivo de código alterado — correção aplicada diretamente no banco via SQL.
+
+**Testes / Validação:** Equipe criada com sucesso após execução do SQL (validado pela usuária).
+
+**Resultado:** ✅ Concluída.
+
+---
+
+### Alteração 13 — Renomear coluna `email` → `team_email` na tabela `teams`
+
+**Descrição:**
+A tabela `teams` foi criada com a coluna chamada `email`, mas o código (`TeamManager.tsx` e `authService.ts` / `teamService`) referencia `team_email`. Isso gerava o erro:
+`"Could not find the 'team_email' column of 'teams' in the schema cache"`.
+
+SQL executado no Supabase SQL Editor:
+```sql
+ALTER TABLE public.teams RENAME COLUMN email TO team_email;
+```
+
+**Arquivos modificados:**
+- Nenhum arquivo de código alterado — correção aplicada diretamente no banco.
+
+**Testes / Validação:** Criação de equipe bem-sucedida após renomeação da coluna.
+
+**Resultado:** ✅ Concluída.
+
+---
+
 ## [Sessão 29/10/2026] — Refinamento 01 · Etapa 2: Atribuição, Transferência e Correção de Deploy
 
 ### Alteração 9 — `claimTicket` reescrito: transferência livre entre atendentes, sem mudança automática de status
@@ -470,6 +708,125 @@ Criação dos arquivos `docs/HISTORICO.md` e `docs/ESTADO_ATUAL.md` conforme exi
 **Resultado:** ✅ Documentação de continuidade inicializada.
 
 **Pendências:** Nenhuma relacionada a esta alteração.
+
+---
+
+## [Sessão 29/10/2026 — 11h14] — Refinamento 03: Catálogo de Serviços Integrado
+
+### Alteração 14 — Novo componente `CatalogAdmin.tsx`: administração integrada do catálogo
+
+**Descrição:**
+Criado `src/components/admin/CatalogAdmin.tsx` — experiência administrativa unificada que substitui a navegação entre três telas separadas (Departamentos, Categorias & Serviços, Construtor de Formulários).
+
+Fluxo implementado: **Departamento → Serviços/Categorias → Formulário (FormBuilder integrado)**
+
+Funcionalidades incluídas:
+- **Nível 1 (Departamentos):** listagem em cards com status, contadores, botões Gerenciar Serviços, Equipe e Arquivar. Criação via modal.
+- **Nível 2 (Serviços & Categorias):** breadcrumb com retorno de contexto; serviços agrupados por categoria; badge de publicação e versão do formulário por serviço; criação e edição de serviços; criação de categorias; acesso direto ao formulário do serviço.
+- **Nível 3 (FormBuilder):** construtor de formulários integrado sem sair da tela; breadcrumb mostra serviço de contexto; ao criar novo formulário a partir de serviço sem form, vinculação automática após salvar.
+- Gestão de membros da equipe de atendimento acessível em todos os níveis.
+- Aviso visual quando não há formulários disponíveis para criar serviços.
+- Preserva completamente o `FormBuilder` existente — não foi modificado.
+- Preserva relacionamentos com chamados existentes — nenhuma migração de dados.
+
+**Arquivos criados:**
+- `src/components/admin/CatalogAdmin.tsx` — novo componente integrado (600+ linhas).
+
+**Testes / Validação:** Build ✅ (2019 módulos, zero erros TypeScript).
+
+**Resultado:** ✅ Concluída.
+
+---
+
+### Alteração 15 — `Sidebar.tsx`: entrada "Catálogo de Serviços" + tipo `admin_catalog`
+
+**Descrição:**
+- Adicionado `'admin_catalog'` ao union type `ActiveTab`.
+- Menu administrativo: substituídas as entradas "Departamentos / Caixas", "Categorias & Serviços" e "Construtor de Formulários" por uma única entrada **"Catálogo de Serviços"** com ícone `BookOpen`.
+- Importado `BookOpen` do Lucide React.
+- As tabs antigas (`admin_departments`, `admin_services`, `admin_forms`) foram removidas do tipo e do menu, mas as rotas permanecem no `App.tsx` como caminho de fallback.
+
+**Arquivos modificados:**
+- `src/components/layout/Sidebar.tsx`
+
+**Testes / Validação:** Build ✅.
+
+**Resultado:** ✅ Concluída.
+
+---
+
+### Alteração 16 — `App.tsx`: rota `admin_catalog` → `CatalogAdmin`
+
+**Descrição:**
+- Import de `CatalogAdmin` adicionado.
+- `case 'admin_catalog'` adicionado ao switch de rotas, renderizando `<CatalogAdmin currentUser={currentUser} />`.
+- As rotas antigas (`admin_departments`, `admin_services`, `admin_forms`) foram mantidas no switch para compatibilidade e fallback, mas removidas do menu lateral.
+
+**Arquivos modificados:**
+- `src/App.tsx`
+
+**Testes / Validação:** Build ✅.
+
+**Resultado:** ✅ Concluída.
+
+---
+
+**Validação do Refinamento 03:**
+
+| Critério | Status |
+|---|---|
+| Super Admin cria departamento | ✅ Modal funcional com código de protocolo |
+| Super Admin cadastra serviço no departamento | ✅ Modal com formulário, categoria opcional, publicação configurável |
+| Vincula e acessa formulário do serviço | ✅ Botão "Formulário" abre `FormBuilder` com contexto pré-carregado |
+| Serviço visível no portal após publicação | ✅ `is_published: true` preservado |
+| Serviços e formulários anteriores funcionam | ✅ Nenhum dado alterado |
+| Chamados existentes preservam vínculos | ✅ Nenhuma migração de dados |
+| Permissões administrativas corretas | ✅ `CatalogAdmin` só está no menu de Super Admin |
+| Build e TypeScript sem erros | ✅ 2019 módulos, exit code 0 |
+
+---
+
+## [Sessão 29/10/2026 — 10h57] — Correções de banco de dados (Supabase)
+
+### Alteração 12 — Criação das tabelas `teams` e `team_members` no Supabase
+
+**Descrição:**
+A aplicação tentava inserir em `public.teams` mas a tabela não existia, resultando em erro
+`"Could not find the table 'public.teams' in the schema cache"`.
+
+SQL executado manualmente no Supabase SQL Editor:
+- Criação de `public.teams` (id, name, description, team_email, department_id, is_active, created_at, updated_at).
+- Criação de `public.team_members` (id, team_id, user_id, added_at, UNIQUE team_id+user_id).
+- RLS habilitado em ambas as tabelas.
+- Políticas: Super Admin com acesso total; Atendente com leitura das equipes/membros do seu departamento.
+- Atualização da constraint `users_profile_role_check` para aceitar `'solicitante' | 'atendente' | 'super_admin'`.
+
+**Arquivos modificados:**
+- Nenhum arquivo de código alterado — correção aplicada diretamente no banco via SQL.
+
+**Testes / Validação:** Equipe criada com sucesso após execução do SQL (validado pela usuária).
+
+**Resultado:** ✅ Concluída.
+
+---
+
+### Alteração 13 — Renomear coluna `email` → `team_email` na tabela `teams`
+
+**Descrição:**
+A tabela `teams` foi criada com a coluna chamada `email`, mas o código (`TeamManager.tsx` e `authService.ts` / `teamService`) referencia `team_email`. Isso gerava o erro:
+`"Could not find the 'team_email' column of 'teams' in the schema cache"`.
+
+SQL executado no Supabase SQL Editor:
+```sql
+ALTER TABLE public.teams RENAME COLUMN email TO team_email;
+```
+
+**Arquivos modificados:**
+- Nenhum arquivo de código alterado — correção aplicada diretamente no banco.
+
+**Testes / Validação:** Criação de equipe bem-sucedida após renomeação da coluna.
+
+**Resultado:** ✅ Concluída.
 
 ---
 

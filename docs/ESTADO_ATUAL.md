@@ -1,6 +1,6 @@
 # Estado Atual do Projeto — Central de Serviços MTP
 
-> Atualizado em: **29/10/2026 — 10h44 (BRT)**
+> Atualizado em: **29/10/2026 — 11h15 (BRT)**
 > Regra: atualizar a cada 5 alterações e ao encerrar cada sessão.
 
 ---
@@ -140,6 +140,11 @@ Sistema Abertura de Chamados/
 | 24 | Papel `atendente` (3 papéis globais) | Ref. 01 | ✅ Implementado |
 | 25 | Gestão de Equipes (`TeamManager`) | Ref. 01 | ✅ Implementado |
 | 26 | Base path dinâmico (GitHub Pages + Vercel) | Deploy | ✅ Implementado |
+| 27 | Tabelas `teams` e `team_members` criadas no Supabase | Ref. 01 | ✅ Concluído |
+| 28 | Constraint `users_profile_role_check` corrigida no Supabase | Ref. 01 | ✅ Concluído |
+| 29 | Coluna `team_email` renomeada corretamente na tabela `teams` | Ref. 01 | ✅ Concluído |
+| 30 | `CatalogAdmin` — administração integrada do catálogo | Ref. 03 | ✅ Implementado |
+| 31 | Sidebar: entrada única "Catálogo de Serviços" (`admin_catalog`) | Ref. 03 | ✅ Implementado |
 
 ---
 
@@ -187,13 +192,11 @@ Sistema Abertura de Chamados/
 
 | # | Pendência | Prioridade |
 |---|---|---|
-| 1 | **[Supabase]** Executar SQL para corrigir constraint de papel (`users_profile_role_check`) | 🔴 Alta |
-| 2 | **[Supabase]** Criar tabelas `teams` e `team_members` (SQL em `docs/HISTORICO.md`) | 🔴 Alta |
-| 3 | **[GitHub]** Adicionar Secrets: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | 🔴 Alta |
-| 4 | **[GitHub]** Configurar Pages source = "GitHub Actions" | 🔴 Alta |
-| 5 | **[Vercel]** Definir env vars: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | 🔴 Alta |
-| 6 | Executar commit e push das alterações da Etapa 2 | 🔴 Alta |
-| 7 | `src/lib/supabase.ts` possui fallback hardcoded da chave anon — avaliar remoção futura | 🟡 Baixa |
+| 1 | **[GitHub]** Adicionar Secrets: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | 🔴 Alta |
+| 2 | **[GitHub]** Configurar Pages source = "GitHub Actions" | 🔴 Alta |
+| 3 | **[Vercel]** Definir env vars: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | 🔴 Alta |
+| 4 | Executar commit e push das alterações da Etapa 2 + Refinamento 03 | 🔴 Alta |
+| 5 | `src/lib/supabase.ts` possui fallback hardcoded da chave anon — avaliar remoção futura | 🟡 Baixa |
 
 ---
 

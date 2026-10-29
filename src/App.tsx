@@ -18,6 +18,7 @@ import { UserManager } from './components/admin/UserManager';
 import { AuditViewer } from './components/admin/AuditViewer';
 import { GlobalDashboard } from './components/admin/GlobalDashboard';
 import { TeamManager } from './components/admin/TeamManager';
+import { CatalogAdmin } from './components/admin/CatalogAdmin';
 import { AuthScreen } from './components/auth/AuthScreen';
 import { RefreshCw } from 'lucide-react';
 
@@ -271,14 +272,8 @@ export const App: React.FC = () => {
                 case 'admin_overview':
                   return <GlobalDashboard />;
 
-                case 'admin_departments':
-                  return <DepartmentManager currentUser={currentUser} />;
-
-                case 'admin_services':
-                  return <CategoryManager currentUser={currentUser} />;
-
-                case 'admin_forms':
-                  return <FormsManagerView currentUser={currentUser} />;
+                case 'admin_catalog':
+                  return <CatalogAdmin currentUser={currentUser} />;
 
                 case 'admin_users':
                   return (
