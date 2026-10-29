@@ -1,6 +1,6 @@
 # Estado Atual do Projeto — Central de Serviços MTP
 
-> Atualizado em: **29/10/2026 — 11h15 (BRT)**
+> Atualizado em: **29/10/2026 — 12h03 (BRT)**
 > Regra: atualizar a cada 5 alterações e ao encerrar cada sessão.
 
 ---
@@ -145,6 +145,10 @@ Sistema Abertura de Chamados/
 | 29 | Coluna `team_email` renomeada corretamente na tabela `teams` | Ref. 01 | ✅ Concluído |
 | 30 | `CatalogAdmin` — administração integrada do catálogo | Ref. 03 | ✅ Implementado |
 | 31 | Sidebar: entrada única "Catálogo de Serviços" (`admin_catalog`) | Ref. 03 | ✅ Implementado |
+| 32 | `FormBuilder` reformulado estilo Microsoft Forms | Ref. 04 | ✅ Implementado |
+| 33 | Configuração de anexos (opcional por padrão, tipos de arquivo) | Ref. 04 | ✅ Implementado |
+| 34 | Remoção da exigência de termos de responsabilidade nos novos forms | Ref. 04 | ✅ Implementado |
+| 35 | Pré-visualização funcional 100% integrada com `FormRenderer` | Ref. 04 | ✅ Implementado |
 
 ---
 
@@ -195,7 +199,7 @@ Sistema Abertura de Chamados/
 | 1 | **[GitHub]** Adicionar Secrets: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | 🔴 Alta |
 | 2 | **[GitHub]** Configurar Pages source = "GitHub Actions" | 🔴 Alta |
 | 3 | **[Vercel]** Definir env vars: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | 🔴 Alta |
-| 4 | Executar commit e push das alterações da Etapa 2 + Refinamento 03 | 🔴 Alta |
+| 4 | Executar commit e push das alterações acumuladas (Etapa 2 + Refinamentos 03 e 04) | 🔴 Alta |
 | 5 | `src/lib/supabase.ts` possui fallback hardcoded da chave anon — avaliar remoção futura | 🟡 Baixa |
 
 ---

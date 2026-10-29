@@ -397,6 +397,8 @@ export const CatalogAdmin: React.FC<CatalogAdminProps> = ({ currentUser }) => {
           onSave={handleSaveForm}
           onCancel={goBack}
           currentUser={currentUser}
+          departmentName={selectedDept?.name}
+          serviceName={formContextService?.name}
         />
       </div>
     );

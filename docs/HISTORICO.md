@@ -5,6 +5,44 @@
 
 ---
 
+## [Sessão 29/10/2026 — 12h01] — Refinamento 04: Reformulação do Construtor de Formulários (Microsoft Forms)
+
+### Alteração 17 — Construtor de Formulários estilo Microsoft Forms + Configuração de Anexos e Remoção de Termos
+
+**Descrição:**
+Reformulação completa do componente `FormBuilder.tsx` para uma experiência vertical limpa, interativa e fluida inspirada no Microsoft Forms:
+1. **Topo:** Título do formulário, descrição, badges de departamento e serviço vinculados, badge de status (`Rascunho` / `Publicado`), versão (`v1`), botões de ação ("Pré-visualizar", "Salvar Rascunho", "Publicar Formulário", "Voltar").
+2. **Área Principal:**
+   - Header card do formulário com edição de título, descrição e instruções ao solicitante.
+   - Lista vertical de perguntas numeradas (1, 2, 3...) em cards dedicados.
+   - **Card ativo/selecionado:** Destaque com borda navy/azul, barra de controles no topo (mover para cima, mover para baixo, duplicar, excluir com confirmação), seletor dinâmico do tipo de resposta, campo para enunciado, orientações (`helpText`) e rodapé com toggle "Resposta Obrigatória".
+   - **Editor específico por tipo:**
+     - Escolha única, múltipla escolha e lista suspensa: adição, remoção e edição de alternativas dinâmicas.
+     - Anexo de arquivo: configuração de extensões aceitas (`validation.fileTypes`), orientações ao solicitante e **não obrigatório por padrão** (`required: false`).
+     - Textos e números: placeholders opcionais.
+3. **Botão "+ Adicionar Pergunta":**
+   - Menu com seleção rápida dos 8 tipos suportados: Escolha Única, Múltipla Escolha, Texto Curto, Texto Longo, Lista Suspensa, Data, Número, Anexo de Arquivo.
+   - **Remoção de termos:** A opção de termos de responsabilidade (`terms`) foi retirada da criação de novas perguntas (mantendo compatibilidade reversa com formulários legados).
+4. **Pré-visualização 100% Funcional:**
+   - Modo de pré-visualização integrado utilizando `FormRenderer.tsx`.
+   - Permite testar a digitação e validações reais sem abrir chamados.
+   - Banner com instruções e botão de retorno à edição.
+5. **FormRenderer atualizado:** Suporte para o atributo `accept` e exibição de formatos permitidos em campos de arquivo (`validation.fileTypes`).
+6. **CatalogAdmin integrado:** Passa os nomes do departamento e serviço para exibição no cabeçalho do construtor.
+
+**Arquivos modificados:**
+- `src/components/forms/FormBuilder.tsx` — reescrito com nova experiência visual Microsoft Forms.
+- `src/components/forms/FormRenderer.tsx` — suporte para `accept` e exibição de formatos aceitos de arquivo.
+- `src/components/admin/CatalogAdmin.tsx` — passagem das propriedades `departmentName` e `serviceName`.
+
+**Testes / Validação:**
+- Compilação TypeScript e build do Vite (`npm run build`) executados com sucesso (código 0, 2019 módulos transformados).
+- Formulários legados preservados sem alteração de schema no banco de dados.
+
+**Resultado:** ✅ Concluída.
+
+---
+
 ## [Sessão 29/10/2026 — 11h14] — Refinamento 03: Catálogo de Serviços Integrado
 
 ### Alteração 14 — Novo componente `CatalogAdmin.tsx`: administração integrada do catálogo

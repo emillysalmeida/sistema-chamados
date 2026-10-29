@@ -228,10 +228,11 @@ export const FormRenderer: React.FC<FormRendererProps> = ({
         );
 
       case 'file':
+        const acceptedTypes = field.validation?.fileTypes?.join(',');
         return (
           <div
             style={{
-              border: '1px dashed var(--border-light)',
+              border: hasError ? '1px dashed #ef4444' : '1px dashed var(--border-light)',
               borderRadius: 'var(--radius-md)',
               padding: '16px',
               textAlign: 'center',
@@ -248,11 +249,17 @@ export const FormRenderer: React.FC<FormRendererProps> = ({
                 'Clique para anexar arquivo ou arraste até aqui'
               )}
             </div>
+            {field.validation?.fileTypes && field.validation.fileTypes.length > 0 && (
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                Formatos aceitos: {field.validation.fileTypes.join(', ')}
+              </div>
+            )}
             <input
               type="file"
               style={{ display: 'none' }}
               id={`file_upload_${field.id}`}
               disabled={disabled}
+              accept={acceptedTypes}
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) {
