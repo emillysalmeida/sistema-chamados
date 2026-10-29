@@ -82,6 +82,11 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [targetStatus, setTargetStatus] = useState<TicketStatus>('em_andamento');
 
+  // Cancel modal
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelJustification, setCancelJustification] = useState('');
+  const [cancellingTicket, setCancellingTicket] = useState(false);
+
   // IT Approval & Requester Edit State (Refinamento 05)
   const [formVersion, setFormVersion] = useState<FormVersion | null>(null);
   const [showEditAnswersModal, setShowEditAnswersModal] = useState(false);
@@ -209,7 +214,25 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
     }
   };
 
-  // IT Approval action (Refinamento 05)
+  // Ação explícita de cancelamento
+  const handleCancelTicket = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ticketData) return;
+
+    try {
+      setCancellingTicket(true);
+      await ticketService.cancelTicket(ticketId, currentUser, cancelJustification);
+      setShowCancelModal(false);
+      setCancelJustification('');
+      await loadTicket();
+      onTicketUpdated();
+      alert(`Chamado ${ticketData.ticket.protocol} foi cancelado com sucesso.`);
+    } catch (err: any) {
+      alert(`Erro ao cancelar chamado: ${err.message}`);
+    } finally {
+      setCancellingTicket(false);
+    }
+  };
   const handleApproveTicket = async () => {
     if (!ticketData) return;
     const confirmed = window.confirm(
@@ -265,27 +288,18 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
         formVersion.fields_schema.map(async (f) => {
           const val = editedAnswers[f.id] ?? null;
           if (f.type === 'file' && val && val._file instanceof File) {
-            try {
-              const uploaded = await storageService.uploadAttachment(
-                val._file,
-                ticketData.ticket.protocol || ticketId,
-                currentUser
-              );
-              return {
-                field_id: f.id,
-                field_label: f.label,
-                field_type: f.type,
-                answer_value: uploaded,
-              };
-            } catch (err: any) {
-              console.warn('Falha no upload do anexo editado:', err);
-              return {
-                field_id: f.id,
-                field_label: f.label,
-                field_type: f.type,
-                answer_value: { name: val.name, size: val.size, type: val.type },
-              };
-            }
+            // Upload real obrigatório
+            const uploaded = await storageService.uploadAttachment(
+              val._file,
+              ticketData.ticket.protocol || ticketId,
+              currentUser
+            );
+            return {
+              field_id: f.id,
+              field_label: f.label,
+              field_type: f.type,
+              answer_value: uploaded,
+            };
           }
 
           const cleanVal = val && val._file ? { name: val.name, size: val.size, type: val.type } : val;
@@ -445,6 +459,20 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
               )}
             </>
           )}
+
+          {/* Ação Explícita: Cancelar Chamado */}
+          {!['resolvido', 'fechado', 'cancelado'].includes(ticket.status) &&
+            (isRequester || canActOnTicket) && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setShowCancelModal(true)}
+                style={{ color: '#dc2626', borderColor: '#fca5a5' }}
+                title="Cancelar este chamado"
+              >
+                <X size={15} /> Cancelar Chamado
+              </button>
+            )}
         </div>
       </div>
 
@@ -578,8 +606,8 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
                 </button>
               )}
 
-              {/* Indicador de bloqueio se já aprovado */}
-              {!isAwaitingApproval && (
+              {/* Indicador de bloqueio APENAS se houver aprovação efetivamente registrada */}
+              {!isAwaitingApproval && (ticket.approved_at || approvalEvent) && (
                 <span
                   style={{
                     fontSize: '0.72rem',
@@ -1059,6 +1087,54 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
                 </button>
                 <button type="submit" className="btn btn-primary btn-sm">
                   Confirmar Mudança
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Cancel Modal */}
+      {showCancelModal && (
+        <div className="modal-overlay" onClick={() => setShowCancelModal(false)}>
+          <div className="modal-content" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-light)' }}>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#dc2626' }}>Cancelar Chamado</h3>
+            </div>
+            <form onSubmit={handleCancelTicket} style={{ padding: 20 }}>
+              <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: 14 }}>
+                Tem certeza que deseja cancelar o chamado <strong>{ticket.protocol}</strong>? O registro e o histórico de atividades serão mantidos no sistema com status "Cancelado".
+              </p>
+
+              <div style={{ marginBottom: 16 }}>
+                <label className="label">
+                  Motivo / Justificativa {isRequester ? '(opcional)' : '* (obrigatório para atendimento/admin)'}
+                </label>
+                <textarea
+                  className="textarea"
+                  style={{ minHeight: 80 }}
+                  placeholder="Explique o motivo do cancelamento deste chamado..."
+                  value={cancelJustification}
+                  onChange={(e) => setCancelJustification(e.target.value)}
+                  required={!isRequester}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setShowCancelModal(false)}
+                  disabled={cancellingTicket}
+                >
+                  Voltar
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-sm"
+                  disabled={cancellingTicket}
+                  style={{ background: '#dc2626', color: '#ffffff', borderColor: '#b91c1c' }}
+                >
+                  {cancellingTicket ? 'Cancelando...' : 'Confirmar Cancelamento'}
                 </button>
               </div>
             </form>

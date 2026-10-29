@@ -19,6 +19,7 @@ export interface Department {
   is_active: boolean;
   is_published: boolean;
   display_order: number;
+  requires_approval?: boolean;
   created_at?: string;
   updated_at?: string;
   member_count?: number;

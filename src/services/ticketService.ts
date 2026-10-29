@@ -11,30 +11,31 @@ import {
 import { notificationService } from './notificationService';
 import { authService } from './authService';
 
-// Helper to identify IT department by internal ID and code prefix (Refinamento 05)
-export const isITDepartmentId = (
-  departmentId: string,
-  deptObj?: { id: string; code?: string; name?: string } | null
+// Helper para verificar se um departamento exige aprovação prévia obrigatória
+export const departmentRequiresApproval = (
+  deptObj?: { id?: string; code?: string; name?: string; requires_approval?: boolean } | null
 ): boolean => {
-  // Known internal ID of Tecnologia da Informação
-  const KNOWN_IT_IDS = [
-    '57f09d6e-9b4c-43d6-b010-1365503c60d0',
-  ];
-  if (KNOWN_IT_IDS.includes(departmentId)) return true;
-  if (deptObj && KNOWN_IT_IDS.includes(deptObj.id)) return true;
+  if (!deptObj) return false;
 
-  const rawCode = (deptObj?.code || '').trim().toUpperCase();
-  if (
-    rawCode === 'TI' ||
-    rawCode.startsWith('TI ') ||
-    rawCode.startsWith('TI-') ||
-    rawCode.startsWith('TI_') ||
-    rawCode.startsWith('TI0')
-  ) {
+  // 1. Prioridade máxima: flag booleana explícita configurada no banco
+  if (deptObj.requires_approval === true) return true;
+  if (deptObj.requires_approval === false) return false;
+
+  // 2. Fallback de segurança para garantir a TI atual sem depender de strings soltas
+  const rawCode = (deptObj.code || '').trim().toUpperCase();
+  if (rawCode === 'TI' || rawCode.startsWith('TI ') || rawCode.startsWith('TI-')) {
     return true;
   }
 
   return false;
+};
+
+// Manter retrocompatibilidade de exportação caso outros módulos importem
+export const isITDepartmentId = (
+  departmentId: string,
+  deptObj?: { id: string; code?: string; name?: string; requires_approval?: boolean } | null
+): boolean => {
+  return departmentRequiresApproval(deptObj);
 };
 
 export const ticketService = {
@@ -65,15 +66,15 @@ export const ticketService = {
   ): Promise<Ticket> {
     const protocol = await this.generateProtocol(payload.department_id);
 
-    // Identify department by internal ID to check if it's the IT department
+    // Identificar se o departamento exige fluxo de aprovação prévia (persistido no banco)
     const { data: dept } = await supabase
       .from('departments')
-      .select('id, code, name')
+      .select('*')
       .eq('id', payload.department_id)
       .maybeSingle();
 
-    const isITDept = isITDepartmentId(payload.department_id, dept);
-    const initialStatus: TicketStatus = isITDept ? 'aguardando_aprovacao' : 'aberto';
+    const requiresApproval = departmentRequiresApproval(dept);
+    const initialStatus: TicketStatus = requiresApproval ? 'aguardando_aprovacao' : 'aberto';
 
     // 1. Insert ticket
     const { data: ticket, error: ticketErr } = await supabase
@@ -110,8 +111,8 @@ export const ticketService = {
     }
 
     // 3. Log initial event
-    const initialDescription = isITDept
-      ? `Chamado registrado por ${requester.name} e encaminhado para análise e aprovação da TI.`
+    const initialDescription = requiresApproval
+      ? `Chamado registrado por ${requester.name} e encaminhado para análise e aprovação da equipe.`
       : `Chamado registrado por ${requester.name} (${requester.email})`;
 
     await supabase.from('ticket_events').insert({
@@ -132,10 +133,10 @@ export const ticketService = {
     const attendantUserIds = (deptMembers || []).map((m) => m.user_id);
 
     if (attendantUserIds.length > 0) {
-      const attendantTitle = isITDept
-        ? `Novo chamado de TI aguardando aprovação: ${ticket.protocol}`
+      const attendantTitle = requiresApproval
+        ? `Novo chamado aguardando aprovação: ${ticket.protocol}`
         : `Novo chamado recebido: ${ticket.protocol}`;
-      const attendantMessage = isITDept
+      const attendantMessage = requiresApproval
         ? `${ticket.subject} (Prioridade: ${ticket.priority}) — aguardando análise e aprovação da equipe.`
         : `${ticket.subject} (Prioridade: ${ticket.priority})`;
 
@@ -150,11 +151,11 @@ export const ticketService = {
     }
 
     // 5. Notify requester confirmation
-    const requesterTitle = isITDept
+    const requesterTitle = requiresApproval
       ? `Chamado registrado: ${ticket.protocol}`
       : `Chamado registrado com sucesso: ${ticket.protocol}`;
-    const requesterMessage = isITDept
-      ? `Sua solicitação foi registrada e está aguardando aprovação da equipe de Tecnologia da Informação.`
+    const requesterMessage = requiresApproval
+      ? `Sua solicitação foi registrada e está aguardando aprovação da equipe.`
       : `Sua solicitação foi encaminhada para a equipe de atendimento.`;
 
     await notificationService.dispatchNotification({
@@ -592,7 +593,7 @@ export const ticketService = {
     return message as TicketMessage;
   },
 
-  // Approve ticket (Spec 4.2 / Refinamento 05: Apenas atendentes autorizados de TI ou Super Admin)
+  // Approve ticket (Spec 4.2 / Refinamento 05: Apenas atendentes autorizados ou Super Admin)
   async approveTicket(ticketId: string, actor: UserProfile): Promise<Ticket> {
     const { data: current } = await supabase
       .from('tickets')
@@ -614,33 +615,22 @@ export const ticketService = {
     }
 
     const now = new Date().toISOString();
-    // Try update with approval columns, fallback gracefully if columns not yet in DB schema
-    let updatePayload: any = {
-      status: 'aberto',
-      updated_at: now,
-    };
 
-    let { data: updated, error } = await supabase
+    // Gravação direta com auditoria obrigatória de aprovador e data
+    const { data: updated, error } = await supabase
       .from('tickets')
       .update({
-        ...updatePayload,
+        status: 'aberto',
+        updated_at: now,
         approved_at: now,
         approved_by: actor.id,
       })
       .eq('id', ticketId)
       .select('*, department:departments(*), service_type:service_types(*), assignee:users_profile!tickets_assigned_to_fkey(*)')
-      .maybeSingle();
+      .single();
 
-    if (error) {
-      // Fallback if approved_at / approved_by columns do not exist yet in Postgres
-      const fallback = await supabase
-        .from('tickets')
-        .update(updatePayload)
-        .eq('id', ticketId)
-        .select('*, department:departments(*), service_type:service_types(*), assignee:users_profile!tickets_assigned_to_fkey(*)')
-        .single();
-      if (fallback.error) throw fallback.error;
-      updated = fallback.data;
+    if (error || !updated) {
+      throw new Error(`Falha ao registrar aprovação no banco de dados: ${error?.message || 'Erro desconhecido'}`);
     }
 
     // Timeline event
@@ -765,9 +755,14 @@ export const ticketService = {
       throw new Error('Apenas a equipe autorizada ou a administração pode alterar o status do chamado.');
     }
 
-    // Rule 4: A transição de "Aguardando Aprovação" para "Aberto" só pode ocorrer via approveTicket
-    if (ticket.status === 'aguardando_aprovacao' && newStatus === 'aberto') {
-      throw new Error('A transição de "Aguardando Aprovação" para "Aberto" deve ser realizada através da ação oficial "Aprovar Solicitação".');
+    // Rule: Não permitir contornar a aprovação da TI
+    if (ticket.status === 'aguardando_aprovacao') {
+      if (newStatus === 'aberto') {
+        throw new Error('A transição de "Aguardando Aprovação" para "Aberto" deve ser realizada através da ação oficial "Aprovar Solicitação".');
+      }
+      if (['em_andamento', 'resolvido', 'fechado'].includes(newStatus)) {
+        throw new Error('O chamado não pode avançar diretamente para atendimento ou resolução antes de ser formalmente aprovado.');
+      }
     }
 
     const updates: any = {
@@ -811,6 +806,107 @@ export const ticketService = {
       message: `Atualizado por ${actor.name}`,
       type: 'status',
     });
+
+    return updated as Ticket;
+  },
+
+  // Cancelar chamado (Solicitante em chamado próprio, Atendente da caixa ou Super Admin)
+  async cancelTicket(
+    ticketId: string,
+    actor: UserProfile,
+    justification?: string
+  ): Promise<Ticket> {
+    const { data: ticket } = await supabase
+      .from('tickets')
+      .select('*, department:departments(*)')
+      .eq('id', ticketId)
+      .single();
+
+    if (!ticket) throw new Error('Chamado não encontrado');
+
+    const isRequester = ticket.requester_id === actor.id;
+    const isSuperAdmin = actor.role === 'super_admin';
+    const isAttendant = await authService.isAttendantForDepartment(actor.id, ticket.department_id);
+
+    // Permissões
+    if (!isRequester && !isAttendant && !isSuperAdmin) {
+      throw new Error('Você não tem permissão para cancelar este chamado.');
+    }
+
+    // Não permitir cancelar chamados já resolvidos, fechados ou já cancelados
+    if (['resolvido', 'fechado', 'cancelado'].includes(ticket.status)) {
+      throw new Error(`Chamados com status "${ticket.status}" não podem ser cancelados.`);
+    }
+
+    // Justificativa obrigatória para atendentes ou administradores
+    if (!isRequester && (!justification || !justification.trim())) {
+      throw new Error('É obrigatório informar uma justificativa para o cancelamento deste chamado.');
+    }
+
+    const now = new Date().toISOString();
+    const { data: updated, error } = await supabase
+      .from('tickets')
+      .update({
+        status: 'cancelado',
+        closed_at: now,
+        updated_at: now,
+      })
+      .eq('id', ticketId)
+      .select('*, department:departments(*), service_type:service_types(*), assignee:users_profile!tickets_assigned_to_fkey(*)')
+      .single();
+
+    if (error || !updated) {
+      throw new Error(`Erro ao cancelar chamado: ${error?.message || 'Falha desconhecida'}`);
+    }
+
+    // Timeline event
+    const eventDescription = isRequester
+      ? `Chamado cancelado pelo solicitante ${actor.name}${justification?.trim() ? ` — Motivo: ${justification.trim()}` : ''}`
+      : `Chamado cancelado por ${actor.name} (${actor.role === 'super_admin' ? 'Super Admin' : 'Atendente'}) — Justificativa: ${justification?.trim()}`;
+
+    await supabase.from('ticket_events').insert({
+      ticket_id: ticketId,
+      actor_id: actor.id,
+      actor_name: actor.name,
+      action_type: 'cancelamento',
+      old_value: ticket.status,
+      new_value: 'cancelado',
+      description: eventDescription,
+      is_internal: false,
+    });
+
+    // Notificar solicitante se cancelado por terceiros, ou notificar equipe se cancelado pelo solicitante
+    if (isRequester) {
+      const recipients: string[] = [];
+      if (ticket.assigned_to) {
+        recipients.push(ticket.assigned_to);
+      } else {
+        const { data: members } = await supabase
+          .from('department_members')
+          .select('user_id')
+          .eq('department_id', ticket.department_id);
+        recipients.push(...(members || []).map((m) => m.user_id));
+      }
+      if (recipients.length > 0) {
+        await notificationService.dispatchNotification({
+          recipientUserIds: recipients,
+          ticketId,
+          protocol: ticket.protocol,
+          title: `Chamado cancelado pelo solicitante: ${ticket.protocol}`,
+          message: `${actor.name} cancelou o chamado.`,
+          type: 'status',
+        });
+      }
+    } else {
+      await notificationService.dispatchNotification({
+        recipientUserIds: [ticket.requester_id],
+        ticketId,
+        protocol: ticket.protocol,
+        title: `Seu chamado ${ticket.protocol} foi cancelado`,
+        message: `Cancelado por ${actor.name}. Justificativa: ${justification?.trim()}`,
+        type: 'status',
+      });
+    }
 
     return updated as Ticket;
   },

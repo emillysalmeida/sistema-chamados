@@ -5,6 +5,33 @@
 
 ---
 
+## [Sessão 29/10/2026 — 18h05] — Correção Técnica: Aprovação da TI, Anexos Estritos e Cancelamento
+
+### Alteração 22 — Configuração Persistida de Aprovação por Departamento, Upload Obrigatório sem Fallback Fantasma e Botão de Cancelamento
+
+**Diagnóstico dos problemas reportados:**
+1. **Identificação da Aprovação:** A verificação de TI no código utilizava UUID estático hardcoded e prefixos de strings que tornavam a identificação frágil e não configurável. Criado o suporte ao campo persistido `requires_approval` no modelo de `departments` com fallback inteligente em `departmentRequiresApproval`.
+2. **Contorno de Status:** O método `updateStatus` permitia que um chamado em `aguardando_aprovacao` fosse alterado para `em_andamento` ou `resolvido` através do seletor genérico. Bloqueado terminantemente no backend/service.
+3. **Indicador Falso de Bloqueio:** O aviso "Formulário bloqueado após aprovação" era exibido para qualquer chamado que não estivesse aguardando aprovação, mesmo sem aprovação registrada. Corrigido para só aparecer se houver `approved_at` ou evento `aprovacao_ti`.
+4. **Anexos e Confirmação de Upload:** O `storageService` e o `TicketCreateModal` foram ajustados para **garantir** a confirmação real do upload no armazenamento antes de salvar o chamado. Se o upload falhar, a operação é interrompida e o usuário é notificado imediatamente para tentar novamente, sem gravar caminhos fictícios ou base64 inline arbitrário.
+5. **Cancelamento de Chamados:** Não existia ação explícita de cancelamento no detalhamento. Criado o método `cancelTicket` no serviço e o modal com botão dedicado "Cancelar Chamado" em `TicketDetail.tsx`.
+
+**Arquivos modificados:**
+- `src/types/database.ts` (adicionado `requires_approval?: boolean` em `Department`)
+- `src/services/ticketService.ts` (`departmentRequiresApproval`, bloqueio de transições indevidas em `updateStatus`, remoção de fallbacks silenciosos em `approveTicket` e implementação de `cancelTicket`)
+- `src/services/storageService.ts` (upload estrito no bucket `ticket-attachments` sem salvar caminhos ou base64 fictícios em falhas)
+- `src/components/tickets/TicketCreateModal.tsx` (confirmação estrita de upload antes de submeter respostas)
+- `src/components/tickets/TicketDetail.tsx` (botão e modal de Cancelamento com justificativa, validação de exibição do aviso de formulário bloqueado)
+
+**Testes executados:**
+- Teste real de criação e cancelamento no Supabase com transição para status `cancelado` e registro de data: ✅ Sucesso.
+- Teste de bloqueio de transição genérica para chamados aguardando aprovação: ✅ Validado.
+- Build de produção (`npm run build`): ✅ Concluído com código 0 (2020 módulos).
+
+**Resultado:** ✅ Concluído com sucesso.
+
+---
+
 ## [Sessão 29/10/2026 — 17h45] — Correção de Bugs: Aprovação da TI e Anexos dos Chamados
 
 ### Alteração 21 — Armazenamento Real, Visualização e Download de Anexos + Garantia do Fluxo de Aprovação da TI

@@ -123,34 +123,23 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({
     try {
       setSubmitting(true);
 
-      // Processar upload de anexos de campos do tipo 'file' que possuem o arquivo real em _file
+      // Processar upload de anexos de campos do tipo 'file'. O upload DEVE ser confirmado antes de registrar.
       const structuredAnswers = await Promise.all(
         formVersion.fields_schema.map(async (f) => {
           const val = answers[f.id] ?? null;
           if (f.type === 'file' && val && val._file instanceof File) {
-            try {
-              // Upload do arquivo para storage (ou data URL inline resiliente)
-              const uploaded = await storageService.uploadAttachment(
-                val._file,
-                `temp_${Date.now()}`,
-                currentUser
-              );
-              return {
-                field_id: f.id,
-                field_label: f.label,
-                field_type: f.type,
-                answer_value: uploaded,
-              };
-            } catch (err: any) {
-              console.warn('Falha no upload do anexo:', err);
-              // Mantém o nome e tamanho como fallback
-              return {
-                field_id: f.id,
-                field_label: f.label,
-                field_type: f.type,
-                answer_value: { name: val.name, size: val.size, type: val.type },
-              };
-            }
+            // Executa upload real; se falhar, lançará erro interrompendo o envio e alertando o usuário
+            const uploaded = await storageService.uploadAttachment(
+              val._file,
+              `temp_${Date.now()}`,
+              currentUser
+            );
+            return {
+              field_id: f.id,
+              field_label: f.label,
+              field_type: f.type,
+              answer_value: uploaded,
+            };
           }
 
           // Se for anexo sem _file (já processado ou nulo)
