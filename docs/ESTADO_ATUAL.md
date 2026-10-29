@@ -1,6 +1,6 @@
 # Estado Atual do Projeto — Central de Serviços MTP
 
-> Atualizado em: **29/10/2026 — 18h05 (BRT)**
+> Atualizado em: **29/10/2026 — 18h11 (BRT)**
 > Regra: atualizar a cada 5 alterações e ao encerrar cada sessão.
 
 ---
