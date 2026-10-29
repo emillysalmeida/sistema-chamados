@@ -23,6 +23,8 @@ import {
   ShieldAlert,
   UserPlus,
   RefreshCw,
+  ArrowRightLeft,
+  UserMinus,
 } from 'lucide-react';
 
 interface TicketDetailProps {
@@ -197,14 +199,17 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
 
         {/* Operational Actions */}
         <div style={{ display: 'flex', gap: 10 }}>
-          {/* Claim Button: Voluntary assignment if ticket is unassigned (Spec 9.2) */}
-          {canActOnTicket && !ticket.assigned_to && (
-            <button className="btn btn-accent btn-sm" onClick={handleClaim}>
-              <UserCheck size={16} /> Assumir Chamado
-            </button>
-          )}
+          {/* Assumir: qualquer atendente autorizado pode assumir, mesmo se já atribuído a outro */}
+          {canActOnTicket &&
+            ticket.assigned_to !== currentUser.id &&
+            !['resolvido', 'fechado', 'cancelado'].includes(ticket.status) && (
+              <button className="btn btn-accent btn-sm" onClick={handleClaim}>
+                <UserCheck size={16} />
+                {ticket.assigned_to ? 'Assumir de ' + (ticket.assignee?.name?.split(' ')[0] || 'outro') : 'Assumir Chamado'}
+              </button>
+            )}
 
-          {/* Admin Assign Button: Super Admin can assign/redistribute to any attendant of the box (Spec 9.3) */}
+          {/* Admin: Designar / Redistribuir para qualquer atendente da caixa (Spec 9.3) */}
           {isSuperAdmin && (
             <button
               className="btn btn-secondary btn-sm"
@@ -217,7 +222,7 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
             </button>
           )}
 
-          {/* Change Status */}
+          {/* Alterar status */}
           {canActOnTicket && (
             <button
               className="btn btn-secondary btn-sm"
@@ -494,9 +499,54 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
               <div>
                 <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem' }}>Responsável Principal</span>
                 {ticket.assignee ? (
-                  <strong style={{ color: 'var(--mtp-navy-primary)' }}>{ticket.assignee.name}</strong>
+                  <div>
+                    <strong style={{ color: 'var(--mtp-navy-primary)' }}>{ticket.assignee.name}</strong>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                      {ticket.assignee.email}
+                    </div>
+                    {/* Atendente autorizado pode assumir de outro */}
+                    {canActOnTicket &&
+                      ticket.assigned_to !== currentUser.id &&
+                      !['resolvido', 'fechado', 'cancelado'].includes(ticket.status) && (
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          style={{ marginTop: 8, fontSize: '0.75rem' }}
+                          onClick={handleClaim}
+                        >
+                          <UserCheck size={12} /> Assumir este chamado
+                        </button>
+                      )}
+                    {/* Você é o responsável atual */}
+                    {ticket.assigned_to === currentUser.id && (
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          marginTop: 6,
+                          fontSize: '0.72rem',
+                          background: 'rgba(91,178,221,0.15)',
+                          color: 'var(--mtp-navy-primary)',
+                          borderRadius: 'var(--radius-sm)',
+                          padding: '2px 8px',
+                          fontWeight: 600,
+                        }}
+                      >
+                        Você é o responsável
+                      </span>
+                    )}
+                  </div>
                 ) : (
-                  <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Fila não atribuída</span>
+                  <div>
+                    <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Fila não atribuída</span>
+                    {canActOnTicket && !['resolvido', 'fechado', 'cancelado'].includes(ticket.status) && (
+                      <button
+                        className="btn btn-accent btn-sm"
+                        style={{ display: 'block', marginTop: 8, fontSize: '0.75rem' }}
+                        onClick={handleClaim}
+                      >
+                        <UserCheck size={12} /> Assumir Chamado
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
 

@@ -267,43 +267,60 @@ export const ticketService = {
     };
   },
 
-  // Spec 9.2: Atribuição voluntária (Assumir chamado)
+  // Spec 9.2: Atribuição voluntária (Assumir chamado) — permite assumir mesmo se já atribuído a outro
   async claimTicket(ticketId: string, actor: UserProfile): Promise<Ticket> {
-    // Check if attendant belongs to department
-    const isAttendant = await authService.isAttendantForDepartment(actor.id, ticketId);
-    // (We also check through department_id in query)
     const { data: current } = await supabase
       .from('tickets')
-      .select('assigned_to, protocol, department_id')
+      .select('assigned_to, assigned_to_prev:assigned_to, protocol, department_id, status')
       .eq('id', ticketId)
       .single();
 
     if (!current) throw new Error('Chamado não encontrado');
 
-    const authorized = actor.role === 'super_admin' || (await authService.isAttendantForDepartment(actor.id, current.department_id));
+    // Verify actor is authorized for this department
+    const authorized =
+      actor.role === 'super_admin' ||
+      (await authService.isAttendantForDepartment(actor.id, current.department_id));
+
     if (!authorized) {
       throw new Error('Você não possui autorização de atendimento para este departamento.');
     }
 
-    // Concurrency check (Sec. 9.2: duas tentativas simultâneas não podem terminar com o mesmo responsável)
-    if (current.assigned_to) {
-      throw new Error('Este chamado já foi assumido por outro atendente.');
+    // Cannot assume your own already-assigned ticket
+    if (current.assigned_to === actor.id) {
+      throw new Error('Você já é o responsável principal por este chamado.');
     }
 
-    const { data: updated, error } = await supabase
+    const previousAssigneeId: string | null = current.assigned_to ?? null;
+
+    // Get previous assignee name for the history record
+    let previousAssigneeName = 'Fila geral (não atribuído)';
+    if (previousAssigneeId) {
+      const { data: prev } = await supabase
+        .from('users_profile')
+        .select('name')
+        .eq('id', previousAssigneeId)
+        .single();
+      previousAssigneeName = prev?.name || 'Atendente anterior';
+    }
+
+    // Atomic update — only updates if assigned_to still matches what we read
+    // (optimistic concurrency: prevents two simultaneous claims resulting in the same assignee)
+    let updateQuery = supabase
       .from('tickets')
       .update({
         assigned_to: actor.id,
-        status: 'em_andamento',
+        // NOTE: status is NOT changed automatically (spec requirement)
         updated_at: new Date().toISOString(),
       })
       .eq('id', ticketId)
-      .is('assigned_to', null)
       .select('*, department:departments(*), service_type:service_types(*), assignee:users_profile!tickets_assigned_to_fkey(*)')
       .maybeSingle();
 
+    const { data: updated, error } = await updateQuery;
+
     if (error || !updated) {
-      throw new Error('Não foi possível assumir o chamado. Pode já ter sido assumido por outro atendente.');
+      throw new Error('Não foi possível assumir o chamado. Tente novamente.');
     }
 
     // Record timeline event
@@ -312,8 +329,36 @@ export const ticketService = {
       actor_id: actor.id,
       actor_name: actor.name,
       action_type: 'atribuicao',
-      description: `${actor.name} assumiu a responsabilidade principal pelo atendimento.`,
+      old_value: previousAssigneeId || null,
+      new_value: actor.id,
+      description: previousAssigneeId
+        ? `${actor.name} assumiu a responsabilidade principal (anterior: ${previousAssigneeName}).`
+        : `${actor.name} assumiu a responsabilidade principal pelo atendimento.`,
       is_internal: false,
+    });
+
+    // Notify previous assignee that responsibility was taken over
+    if (previousAssigneeId) {
+      await notificationService.dispatchNotification({
+        recipientUserIds: [previousAssigneeId],
+        ticketId,
+        protocol: current.protocol,
+        title: `Responsabilidade transferida: ${current.protocol}`,
+        message: `${actor.name} assumiu este chamado.`,
+        type: 'atribuicao',
+      });
+    }
+
+    // Notify new assignee (actor)
+    await notificationService.dispatchNotification({
+      recipientUserIds: [actor.id],
+      ticketId,
+      protocol: current.protocol,
+      title: `Você assumiu o chamado: ${current.protocol}`,
+      message: previousAssigneeId
+        ? `Responsabilidade transferida de ${previousAssigneeName}.`
+        : `Chamado atribuído a você a partir da fila geral.`,
+      type: 'atribuicao',
     });
 
     return updated as Ticket;

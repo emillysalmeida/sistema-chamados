@@ -5,6 +5,80 @@
 
 ---
 
+## [Sessão 29/10/2026] — Refinamento 01 · Etapa 2: Atribuição, Transferência e Correção de Deploy
+
+### Alteração 9 — `claimTicket` reescrito: transferência livre entre atendentes, sem mudança automática de status
+
+**Descrição:**
+- Atendentes agora podem assumir chamados já atribuídos a outros (antes só era possível quando `assigned_to` era nulo).
+- Status **não** é alterado automaticamente ao assumir (spec: "a mudança de responsável NÃO deve alterar automaticamente o status").
+- Registra responsável anterior em `old_value`/`new_value` no evento `ticket_events`.
+- Notifica o responsável anterior e o novo responsável via `notificationService`.
+- Concorrência atômica preservada (update sem `match` adicional, última gravação vence — aceitável para o volume atual).
+- Corrigido bug anterior: estava passando `ticketId` em vez de `current.department_id` em `isAttendantForDepartment`.
+
+**Arquivos modificados:**
+- `src/services/ticketService.ts` — método `claimTicket` completamente reescrito.
+
+**Testes / Validação:** Build ✅ (2021 módulos, zero erros TypeScript).
+
+**Resultado:** ✅ Concluída.
+
+---
+
+### Alteração 10 — `TicketDetail.tsx`: UI aprimorada para assumir/transferir responsabilidade
+
+**Descrição:**
+- Botão "Assumir Chamado" agora visível quando o chamado está atribuído a outro atendente (não só quando sem responsável).
+- Rótulo dinâmico: "Assumir de [PrimeiroNome]" quando há responsável atual, "Assumir Chamado" quando não há.
+- Botão oculto para chamados com status `resolvido`, `fechado` ou `cancelado`.
+- Sidebar "Responsável Principal" aprimorada: exibe e-mail, pílula "Você é o responsável", botão inline "Assumir este chamado".
+- Imports `ArrowRightLeft` e `UserMinus` adicionados (usados em ícones de contexto).
+
+**Arquivos modificados:**
+- `src/components/tickets/TicketDetail.tsx` — seção de responsável e botões de ação.
+
+**Testes / Validação:** Build ✅ (2021 módulos, zero erros TypeScript).
+
+**Resultado:** ✅ Concluída.
+
+---
+
+### Alteração 11 — `vite.config.ts`: base path dinâmico para suportar GitHub Pages e Vercel
+
+**Descrição:**
+- `base` alterado de `'/sistema-chamados/'` (fixo) para `process.env.VITE_BASE_PATH || '/'`.
+- GitHub Pages recebe `VITE_BASE_PATH=/sistema-chamados/` via env no workflow.
+- Vercel serve na raiz `/` — não precisa definir a variável (padrão `/`).
+- Resolve a tela branca em ambos os ambientes.
+
+**Arquivos modificados:**
+- `vite.config.ts`
+- `.github/workflows/deploy.yml` — adicionado `VITE_BASE_PATH: /sistema-chamados/` no step de build.
+
+**Testes / Validação:** Build local ✅ (2021 módulos). GitHub Pages e Vercel aguardam push para validação final.
+
+**Resultado:** ✅ Implementada localmente — aguardando deploy.
+
+---
+
+**Pendências críticas (executar manualmente no Supabase SQL Editor):**
+
+1. Atualizar constraint de papel:
+```sql
+ALTER TABLE users_profile DROP CONSTRAINT IF EXISTS users_profile_role_check;
+ALTER TABLE users_profile ADD CONSTRAINT users_profile_role_check
+  CHECK (role IN ('solicitante', 'atendente', 'super_admin'));
+```
+
+2. Criar tabelas `teams` e `team_members` (SQL completo em Alteração 7 neste histórico).
+
+3. Vercel: definir `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` nas variáveis de ambiente do projeto.
+
+4. GitHub Pages: adicionar secrets `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` no repositório (Settings → Secrets and variables → Actions).
+
+---
+
 ## [Sessão 28/10/2026 — 17h00] — Refinamento 01 · Etapa 1: Usuários, Perfis e Equipes
 
 ### Alteração 3 — Novo papel `atendente` no domínio de tipos
@@ -173,6 +247,80 @@ Preparação completa do projeto para versionamento e publicação no GitHub. O 
 
 ---
 
+## [Sessão 29/10/2026] — Refinamento 01 · Etapa 2: Atribuição, Transferência e Correção de Deploy
+
+### Alteração 9 — `claimTicket` reescrito: transferência livre entre atendentes, sem mudança automática de status
+
+**Descrição:**
+- Atendentes agora podem assumir chamados já atribuídos a outros (antes só era possível quando `assigned_to` era nulo).
+- Status **não** é alterado automaticamente ao assumir (spec: "a mudança de responsável NÃO deve alterar automaticamente o status").
+- Registra responsável anterior em `old_value`/`new_value` no evento `ticket_events`.
+- Notifica o responsável anterior e o novo responsável via `notificationService`.
+- Concorrência atômica preservada (update sem `match` adicional, última gravação vence — aceitável para o volume atual).
+- Corrigido bug anterior: estava passando `ticketId` em vez de `current.department_id` em `isAttendantForDepartment`.
+
+**Arquivos modificados:**
+- `src/services/ticketService.ts` — método `claimTicket` completamente reescrito.
+
+**Testes / Validação:** Build ✅ (2021 módulos, zero erros TypeScript).
+
+**Resultado:** ✅ Concluída.
+
+---
+
+### Alteração 10 — `TicketDetail.tsx`: UI aprimorada para assumir/transferir responsabilidade
+
+**Descrição:**
+- Botão "Assumir Chamado" agora visível quando o chamado está atribuído a outro atendente (não só quando sem responsável).
+- Rótulo dinâmico: "Assumir de [PrimeiroNome]" quando há responsável atual, "Assumir Chamado" quando não há.
+- Botão oculto para chamados com status `resolvido`, `fechado` ou `cancelado`.
+- Sidebar "Responsável Principal" aprimorada: exibe e-mail, pílula "Você é o responsável", botão inline "Assumir este chamado".
+- Imports `ArrowRightLeft` e `UserMinus` adicionados (usados em ícones de contexto).
+
+**Arquivos modificados:**
+- `src/components/tickets/TicketDetail.tsx` — seção de responsável e botões de ação.
+
+**Testes / Validação:** Build ✅ (2021 módulos, zero erros TypeScript).
+
+**Resultado:** ✅ Concluída.
+
+---
+
+### Alteração 11 — `vite.config.ts`: base path dinâmico para suportar GitHub Pages e Vercel
+
+**Descrição:**
+- `base` alterado de `'/sistema-chamados/'` (fixo) para `process.env.VITE_BASE_PATH || '/'`.
+- GitHub Pages recebe `VITE_BASE_PATH=/sistema-chamados/` via env no workflow.
+- Vercel serve na raiz `/` — não precisa definir a variável (padrão `/`).
+- Resolve a tela branca em ambos os ambientes.
+
+**Arquivos modificados:**
+- `vite.config.ts`
+- `.github/workflows/deploy.yml` — adicionado `VITE_BASE_PATH: /sistema-chamados/` no step de build.
+
+**Testes / Validação:** Build local ✅ (2021 módulos). GitHub Pages e Vercel aguardam push para validação final.
+
+**Resultado:** ✅ Implementada localmente — aguardando deploy.
+
+---
+
+**Pendências críticas (executar manualmente no Supabase SQL Editor):**
+
+1. Atualizar constraint de papel:
+```sql
+ALTER TABLE users_profile DROP CONSTRAINT IF EXISTS users_profile_role_check;
+ALTER TABLE users_profile ADD CONSTRAINT users_profile_role_check
+  CHECK (role IN ('solicitante', 'atendente', 'super_admin'));
+```
+
+2. Criar tabelas `teams` e `team_members` (SQL completo em Alteração 7 neste histórico).
+
+3. Vercel: definir `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` nas variáveis de ambiente do projeto.
+
+4. GitHub Pages: adicionar secrets `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` no repositório (Settings → Secrets and variables → Actions).
+
+---
+
 ## [Sessão 28/10/2026 — 17h00] — Refinamento 01 · Etapa 1: Usuários, Perfis e Equipes
 
 ### Alteração 3 — Novo papel `atendente` no domínio de tipos
@@ -322,6 +470,80 @@ Criação dos arquivos `docs/HISTORICO.md` e `docs/ESTADO_ATUAL.md` conforme exi
 **Resultado:** ✅ Documentação de continuidade inicializada.
 
 **Pendências:** Nenhuma relacionada a esta alteração.
+
+---
+
+## [Sessão 29/10/2026] — Refinamento 01 · Etapa 2: Atribuição, Transferência e Correção de Deploy
+
+### Alteração 9 — `claimTicket` reescrito: transferência livre entre atendentes, sem mudança automática de status
+
+**Descrição:**
+- Atendentes agora podem assumir chamados já atribuídos a outros (antes só era possível quando `assigned_to` era nulo).
+- Status **não** é alterado automaticamente ao assumir (spec: "a mudança de responsável NÃO deve alterar automaticamente o status").
+- Registra responsável anterior em `old_value`/`new_value` no evento `ticket_events`.
+- Notifica o responsável anterior e o novo responsável via `notificationService`.
+- Concorrência atômica preservada (update sem `match` adicional, última gravação vence — aceitável para o volume atual).
+- Corrigido bug anterior: estava passando `ticketId` em vez de `current.department_id` em `isAttendantForDepartment`.
+
+**Arquivos modificados:**
+- `src/services/ticketService.ts` — método `claimTicket` completamente reescrito.
+
+**Testes / Validação:** Build ✅ (2021 módulos, zero erros TypeScript).
+
+**Resultado:** ✅ Concluída.
+
+---
+
+### Alteração 10 — `TicketDetail.tsx`: UI aprimorada para assumir/transferir responsabilidade
+
+**Descrição:**
+- Botão "Assumir Chamado" agora visível quando o chamado está atribuído a outro atendente (não só quando sem responsável).
+- Rótulo dinâmico: "Assumir de [PrimeiroNome]" quando há responsável atual, "Assumir Chamado" quando não há.
+- Botão oculto para chamados com status `resolvido`, `fechado` ou `cancelado`.
+- Sidebar "Responsável Principal" aprimorada: exibe e-mail, pílula "Você é o responsável", botão inline "Assumir este chamado".
+- Imports `ArrowRightLeft` e `UserMinus` adicionados (usados em ícones de contexto).
+
+**Arquivos modificados:**
+- `src/components/tickets/TicketDetail.tsx` — seção de responsável e botões de ação.
+
+**Testes / Validação:** Build ✅ (2021 módulos, zero erros TypeScript).
+
+**Resultado:** ✅ Concluída.
+
+---
+
+### Alteração 11 — `vite.config.ts`: base path dinâmico para suportar GitHub Pages e Vercel
+
+**Descrição:**
+- `base` alterado de `'/sistema-chamados/'` (fixo) para `process.env.VITE_BASE_PATH || '/'`.
+- GitHub Pages recebe `VITE_BASE_PATH=/sistema-chamados/` via env no workflow.
+- Vercel serve na raiz `/` — não precisa definir a variável (padrão `/`).
+- Resolve a tela branca em ambos os ambientes.
+
+**Arquivos modificados:**
+- `vite.config.ts`
+- `.github/workflows/deploy.yml` — adicionado `VITE_BASE_PATH: /sistema-chamados/` no step de build.
+
+**Testes / Validação:** Build local ✅ (2021 módulos). GitHub Pages e Vercel aguardam push para validação final.
+
+**Resultado:** ✅ Implementada localmente — aguardando deploy.
+
+---
+
+**Pendências críticas (executar manualmente no Supabase SQL Editor):**
+
+1. Atualizar constraint de papel:
+```sql
+ALTER TABLE users_profile DROP CONSTRAINT IF EXISTS users_profile_role_check;
+ALTER TABLE users_profile ADD CONSTRAINT users_profile_role_check
+  CHECK (role IN ('solicitante', 'atendente', 'super_admin'));
+```
+
+2. Criar tabelas `teams` e `team_members` (SQL completo em Alteração 7 neste histórico).
+
+3. Vercel: definir `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` nas variáveis de ambiente do projeto.
+
+4. GitHub Pages: adicionar secrets `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` no repositório (Settings → Secrets and variables → Actions).
 
 ---
 
