@@ -127,6 +127,7 @@ export interface ServiceType {
 export type TicketPriority = 'baixa' | 'media' | 'alta' | 'urgente';
 
 export type TicketStatus =
+  | 'aguardando_aprovacao'
   | 'aberto'
   | 'em_andamento'
   | 'aguardando_solicitante'
@@ -151,10 +152,13 @@ export interface Ticket {
   updated_at: string;
   resolved_at?: string;
   closed_at?: string;
+  approved_at?: string;
+  approved_by?: string;
   // Joins
   department?: Department;
   service_type?: ServiceType;
   assignee?: UserProfile;
+  approver?: UserProfile;
 }
 
 export interface TicketAnswer {

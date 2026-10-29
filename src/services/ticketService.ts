@@ -39,6 +39,16 @@ export const ticketService = {
   ): Promise<Ticket> {
     const protocol = await this.generateProtocol(payload.department_id);
 
+    // Identify department by internal ID to check if it's the IT department
+    const { data: dept } = await supabase
+      .from('departments')
+      .select('id, code, name')
+      .eq('id', payload.department_id)
+      .single();
+
+    const isITDept = dept?.code?.toUpperCase() === 'TI';
+    const initialStatus: TicketStatus = isITDept ? 'aguardando_aprovacao' : 'aberto';
+
     // 1. Insert ticket
     const { data: ticket, error: ticketErr } = await supabase
       .from('tickets')
@@ -52,7 +62,7 @@ export const ticketService = {
         requester_email: requester.email,
         subject: payload.subject.trim(),
         priority: payload.priority || 'media',
-        status: 'aberto',
+        status: initialStatus,
       })
       .select('*, department:departments(*), service_type:service_types(*)')
       .single();
@@ -74,12 +84,16 @@ export const ticketService = {
     }
 
     // 3. Log initial event
+    const initialDescription = isITDept
+      ? `Chamado registrado por ${requester.name} e encaminhado para análise e aprovação da TI.`
+      : `Chamado registrado por ${requester.name} (${requester.email})`;
+
     await supabase.from('ticket_events').insert({
       ticket_id: ticket.id,
       actor_id: requester.id,
       actor_name: requester.name,
       action_type: 'criacao',
-      description: `Chamado registrado por ${requester.name} (${requester.email})`,
+      description: initialDescription,
       is_internal: false,
     });
 
@@ -92,23 +106,37 @@ export const ticketService = {
     const attendantUserIds = (deptMembers || []).map((m) => m.user_id);
 
     if (attendantUserIds.length > 0) {
+      const attendantTitle = isITDept
+        ? `Novo chamado de TI aguardando aprovação: ${ticket.protocol}`
+        : `Novo chamado recebido: ${ticket.protocol}`;
+      const attendantMessage = isITDept
+        ? `${ticket.subject} (Prioridade: ${ticket.priority}) — aguardando análise e aprovação da equipe.`
+        : `${ticket.subject} (Prioridade: ${ticket.priority})`;
+
       await notificationService.dispatchNotification({
         recipientUserIds: attendantUserIds,
         ticketId: ticket.id,
         protocol: ticket.protocol,
-        title: `Novo chamado recebido: ${ticket.protocol}`,
-        message: `${ticket.subject} (Prioridade: ${ticket.priority})`,
+        title: attendantTitle,
+        message: attendantMessage,
         type: 'novo_chamado',
       });
     }
 
     // 5. Notify requester confirmation
+    const requesterTitle = isITDept
+      ? `Chamado registrado: ${ticket.protocol}`
+      : `Chamado registrado com sucesso: ${ticket.protocol}`;
+    const requesterMessage = isITDept
+      ? `Sua solicitação foi registrada e está aguardando aprovação da equipe de Tecnologia da Informação.`
+      : `Sua solicitação foi encaminhada para a equipe de atendimento.`;
+
     await notificationService.dispatchNotification({
       recipientUserIds: [requester.id],
       ticketId: ticket.id,
       protocol: ticket.protocol,
-      title: `Chamado registrado com sucesso: ${ticket.protocol}`,
-      message: `Sua solicitação foi encaminhada para a equipe de atendimento.`,
+      title: requesterTitle,
+      message: requesterMessage,
       type: 'novo_chamado',
     });
 
@@ -141,7 +169,7 @@ export const ticketService = {
         query = query.in('department_id', authorizedDeptIds);
       }
     } else if (params.view === 'nao_atribuidos') {
-      query = query.is('assigned_to', null).in('status', ['aberto', 'em_andamento', 'aguardando_solicitante']);
+      query = query.is('assigned_to', null).in('status', ['aguardando_aprovacao', 'aberto', 'em_andamento', 'aguardando_solicitante']);
       if (params.currentUser.role !== 'super_admin') {
         const memberships = await authService.getUserDepartments(params.currentUser.id);
         const authorizedDeptIds = memberships.map((m) => m.department_id);
@@ -149,7 +177,7 @@ export const ticketService = {
         query = query.in('department_id', authorizedDeptIds);
       }
     } else if (params.view === 'atribuidos_a_mim') {
-      query = query.eq('assigned_to', params.currentUser.id).in('status', ['aberto', 'em_andamento', 'aguardando_solicitante']);
+      query = query.eq('assigned_to', params.currentUser.id).in('status', ['aguardando_aprovacao', 'aberto', 'em_andamento', 'aguardando_solicitante']);
     } else if (params.view === 'todos_global') {
       if (params.currentUser.role !== 'super_admin') {
         return [];
@@ -538,6 +566,142 @@ export const ticketService = {
     return message as TicketMessage;
   },
 
+  // Approve ticket (Spec 4.2 / Refinamento 05: Apenas atendentes autorizados de TI ou Super Admin)
+  async approveTicket(ticketId: string, actor: UserProfile): Promise<Ticket> {
+    const { data: current } = await supabase
+      .from('tickets')
+      .select('*, department:departments(*)')
+      .eq('id', ticketId)
+      .single();
+
+    if (!current) throw new Error('Chamado não encontrado');
+
+    const isSuperAdmin = actor.role === 'super_admin';
+    const isAttendant = await authService.isAttendantForDepartment(actor.id, current.department_id);
+
+    if (!isSuperAdmin && !isAttendant) {
+      throw new Error('Você não possui autorização para aprovar chamados deste departamento.');
+    }
+
+    if (current.status !== 'aguardando_aprovacao') {
+      throw new Error(`Este chamado não está aguardando aprovação (status atual: ${current.status}).`);
+    }
+
+    const now = new Date().toISOString();
+    const { data: updated, error } = await supabase
+      .from('tickets')
+      .update({
+        status: 'aberto',
+        approved_at: now,
+        approved_by: actor.id,
+        updated_at: now,
+      })
+      .eq('id', ticketId)
+      .select('*, department:departments(*), service_type:service_types(*), assignee:users_profile!tickets_assigned_to_fkey(*)')
+      .single();
+
+    if (error) throw error;
+
+    // Timeline event
+    await supabase.from('ticket_events').insert({
+      ticket_id: ticketId,
+      actor_id: actor.id,
+      actor_name: actor.name,
+      action_type: 'aprovacao_ti',
+      old_value: 'aguardando_aprovacao',
+      new_value: 'aberto',
+      description: `Solicitação aprovada por ${actor.name} (${actor.email}). Chamado liberado para atendimento.`,
+      is_internal: false,
+    });
+
+    // Notify requester
+    await notificationService.dispatchNotification({
+      recipientUserIds: [current.requester_id],
+      ticketId,
+      protocol: current.protocol,
+      title: `Solicitação aprovada: ${current.protocol}`,
+      message: `Sua solicitação foi aprovada pela equipe de TI e liberada para atendimento.`,
+      type: 'status',
+    });
+
+    return updated as Ticket;
+  },
+
+  // Update form answers by requester prior to approval (Refinamento 05)
+  async updateTicketAnswers(
+    ticketId: string,
+    answers: { field_id: string; field_label: string; field_type: string; answer_value: any }[],
+    actor: UserProfile
+  ): Promise<void> {
+    const { data: ticket } = await supabase
+      .from('tickets')
+      .select('*, department:departments(*)')
+      .eq('id', ticketId)
+      .single();
+
+    if (!ticket) throw new Error('Chamado não encontrado');
+
+    // Server-side permission check: only requester or super_admin
+    const isRequester = ticket.requester_id === actor.id;
+    const isSuperAdmin = actor.role === 'super_admin';
+    if (!isRequester && !isSuperAdmin) {
+      throw new Error('Apenas o solicitante da abertura pode editar os dados desta solicitação.');
+    }
+
+    // Server-side strict check: can ONLY edit while in 'aguardando_aprovacao'
+    if (ticket.status !== 'aguardando_aprovacao') {
+      throw new Error('Esta solicitação já foi aprovada/liberada e não pode mais ser alterada.');
+    }
+
+    // Replace answers
+    await supabase.from('ticket_answers').delete().eq('ticket_id', ticketId);
+
+    if (answers.length > 0) {
+      const answersRows = answers.map((a) => ({
+        ticket_id: ticketId,
+        field_id: a.field_id,
+        field_label: a.field_label,
+        field_type: a.field_type,
+        answer_value: a.answer_value,
+      }));
+      await supabase.from('ticket_answers').insert(answersRows);
+    }
+
+    // Update ticket updated_at
+    await supabase
+      .from('tickets')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', ticketId);
+
+    // Timeline event
+    await supabase.from('ticket_events').insert({
+      ticket_id: ticketId,
+      actor_id: actor.id,
+      actor_name: actor.name,
+      action_type: 'edicao_solicitante',
+      description: `Solicitação atualizada pelo solicitante ${actor.name} com informações ou anexos complementares.`,
+      is_internal: false,
+    });
+
+    // Notify attendants of that department
+    const { data: deptMembers } = await supabase
+      .from('department_members')
+      .select('user_id')
+      .eq('department_id', ticket.department_id);
+
+    const attendantUserIds = (deptMembers || []).map((m) => m.user_id);
+    if (attendantUserIds.length > 0) {
+      await notificationService.dispatchNotification({
+        recipientUserIds: attendantUserIds,
+        ticketId,
+        protocol: ticket.protocol,
+        title: `Solicitação atualizada pelo solicitante: ${ticket.protocol}`,
+        message: `${actor.name} atualizou as informações do formulário/anexos.`,
+        type: 'resposta',
+      });
+    }
+  },
+
   // Update status (e.g. resolver, fechar, reabrir)
   async updateStatus(
     ticketId: string,
@@ -558,6 +722,11 @@ export const ticketService = {
 
     if (!isSuperAdmin && !isAttendant) {
       throw new Error('Apenas a equipe autorizada ou a administração pode alterar o status do chamado.');
+    }
+
+    // Rule 4: A transição de "Aguardando Aprovação" para "Aberto" só pode ocorrer via approveTicket
+    if (ticket.status === 'aguardando_aprovacao' && newStatus === 'aberto') {
+      throw new Error('A transição de "Aguardando Aprovação" para "Aberto" deve ser realizada através da ação oficial "Aprovar Solicitação".');
     }
 
     const updates: any = {

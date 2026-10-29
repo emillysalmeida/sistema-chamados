@@ -5,6 +5,58 @@
 
 ---
 
+## [Sessão 29/10/2026 — 15h50] — Refinamento 05: Fluxo de Aprovação dos Chamados de TI
+
+### Alteração 18 — Fluxo de Aprovação Obrigatória para Todos os Chamados da TI
+
+**Descrição:**
+Implementação do fluxo obrigatório de aprovação para todo chamado aberto na caixa/departamento de Tecnologia da Informação (TI):
+1. **Identificação e Status Inicial:**
+   - O departamento é identificado pelo identificador interno no `createTicket` (`payload.department_id`), checando o código único da caixa (`code === 'TI'`).
+   - Todos os chamados de TI (qualquer categoria ou serviço) iniciam obrigatoriamente no status **`aguardando_aprovacao`** ("Aguardando Aprovação").
+   - Demais departamentos continuam iniciando no status `"aberto"`.
+   - Chamados anteriores não foram alterados retroativamente.
+   - Anexos permanecem opcionais na abertura (não bloqueiam o envio).
+2. **Novo Status `aguardando_aprovacao` no Sistema:**
+   - Adicionado a `TicketStatus` em `src/types/database.ts` e campos `approved_at`, `approved_by` e `approver`.
+   - Classes CSS `.badge-aguardando_aprovacao`, `.badge-aberto`, etc., adicionadas em `src/styles/index.css`.
+   - Exibição amigável "Aguardando Aprovação" configurada em `TicketDetail.tsx`, `TicketList.tsx` e `TicketKanban.tsx`.
+   - Inclusão do status nos filtros de busca e nas visões de fila compartilhada e não atribuídos (`getTickets`).
+3. **Análise Inicial pela TI (`TicketDetail.tsx`):**
+   - Atendentes autorizados da TI e Super Admin visualizam os botões:
+     - **"Aprovar Solicitação"** (`approveTicket`): valida permissão e atomicamente transiciona o status de `aguardando_aprovacao` para `aberto`, bloqueia o formulário, grava quem aprovou e quando no histórico e notifica o solicitante.
+     - **"Solicitar Informações / Comprovantes"**: foca automaticamente na aba de resposta pública com modelo de orientação ao colaborador, mantendo o status em aprovação.
+   - A transição de `aguardando_aprovacao` para `aberto` foi travada no `updateStatus`, exigindo uso da ação oficial de aprovação.
+4. **Edição pelo Solicitante Antes da Aprovação (`updateTicketAnswers`):**
+   - Enquanto o chamado estiver em `aguardando_aprovacao`, o solicitante pode clicar em **"Editar Solicitação"**.
+   - Modal interativo reutilizando `FormRenderer` para alterar campos e anexar novos documentos.
+   - Validação no servidor: apenas solicitante/admin e estritamente enquanto em `aguardando_aprovacao`. Se aprovado concorrentemente, a gravação é rejeitada.
+   - Atualiza `ticket_answers`, gera evento de auditoria `edicao_solicitante` e notifica os atendentes de TI.
+5. **Bloqueio Pós-Aprovação:**
+   - Quando o status passa para `aberto`, o botão de edição desaparece e um indicador exibe quem aprovou e a data/hora. O formulário fica bloqueado para edição, permitindo apenas respostas públicas normais.
+6. **Notificações:**
+   - Novo chamado de TI aguardando aprovação → notifica atendentes da TI e confirmação ao solicitante.
+   - Solicitação de documentos → resposta pública notifica solicitante.
+   - Solicitante edita solicitação → notifica equipe da TI.
+   - TI aprova → notifica solicitante da liberação para atendimento.
+
+**Arquivos modificados:**
+- `src/types/database.ts`
+- `src/styles/index.css`
+- `src/services/ticketService.ts`
+- `src/components/tickets/TicketDetail.tsx`
+- `src/components/tickets/TicketList.tsx`
+- `src/components/tickets/TicketKanban.tsx`
+- `src/App.tsx`
+
+**Testes / Validação:**
+- Compilação TypeScript e Vite build (`npm run build`) executados com sucesso (código 0, 2019 módulos transformados).
+- Compatibilidade com chamados, departamentos e formulários existentes preservada.
+
+**Resultado:** ✅ Concluída.
+
+---
+
 ## [Sessão 29/10/2026 — 12h01] — Refinamento 04: Reformulação do Construtor de Formulários (Microsoft Forms)
 
 ### Alteração 17 — Construtor de Formulários estilo Microsoft Forms + Configuração de Anexos e Remoção de Termos

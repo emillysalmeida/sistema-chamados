@@ -7,9 +7,12 @@ import {
   UserProfile,
   TicketStatus,
   DepartmentMember,
+  FormVersion,
 } from '../../types/database';
+import { supabase } from '../../lib/supabase';
 import { ticketService } from '../../services/ticketService';
 import { catalogService } from '../../services/catalogService';
+import { FormRenderer } from '../forms/FormRenderer';
 import {
   ArrowLeft,
   UserCheck,
@@ -25,6 +28,12 @@ import {
   RefreshCw,
   ArrowRightLeft,
   UserMinus,
+  CheckCircle2,
+  Edit3,
+  Paperclip,
+  Info,
+  ShieldCheck,
+  X,
 } from 'lucide-react';
 
 interface TicketDetailProps {
@@ -68,6 +77,13 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [targetStatus, setTargetStatus] = useState<TicketStatus>('em_andamento');
 
+  // IT Approval & Requester Edit State (Refinamento 05)
+  const [formVersion, setFormVersion] = useState<FormVersion | null>(null);
+  const [showEditAnswersModal, setShowEditAnswersModal] = useState(false);
+  const [editedAnswers, setEditedAnswers] = useState<Record<string, any>>({});
+  const [savingAnswers, setSavingAnswers] = useState(false);
+  const [approvingTicket, setApprovingTicket] = useState(false);
+
   useEffect(() => {
     loadTicket();
   }, [ticketId]);
@@ -78,6 +94,20 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
       setErrorMsg('');
       const data = await ticketService.getTicketDetail(ticketId, currentUser);
       setTicketData(data);
+
+      // Load form schema version for requester edit
+      if (data.ticket.form_version_id) {
+        const { data: ver } = await supabase
+          .from('form_versions')
+          .select('*')
+          .eq('id', data.ticket.form_version_id)
+          .maybeSingle();
+
+        if (ver) {
+          setFormVersion(ver as FormVersion);
+        }
+      }
+
       if (data.canViewInternalNotes) {
         // Preload department attendants for assignment
         const members = await catalogService.getDepartmentMembers(data.ticket.department_id);
@@ -87,6 +117,27 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
       setErrorMsg(err.message || 'Erro ao carregar detalhes do chamado');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const formatStatusLabel = (status: TicketStatus) => {
+    switch (status) {
+      case 'aguardando_aprovacao':
+        return 'Aguardando Aprovação';
+      case 'aberto':
+        return 'Aberto';
+      case 'em_andamento':
+        return 'Em Andamento';
+      case 'aguardando_solicitante':
+        return 'Aguardando Solicitante';
+      case 'resolvido':
+        return 'Resolvido';
+      case 'fechado':
+        return 'Fechado';
+      case 'cancelado':
+        return 'Cancelado';
+      default:
+        return status;
     }
   };
 
@@ -153,6 +204,77 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
     }
   };
 
+  // IT Approval action (Refinamento 05)
+  const handleApproveTicket = async () => {
+    if (!ticketData) return;
+    const confirmed = window.confirm(
+      `Confirmar a aprovação da solicitação ${ticketData.ticket.protocol}?\n\nO chamado mudará para "Aberto", terá sua edição bloqueada para o solicitante e será liberado para atendimento normal pela equipe de TI.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setApprovingTicket(true);
+      await ticketService.approveTicket(ticketId, currentUser);
+      await loadTicket();
+      onTicketUpdated();
+      alert(`Solicitação ${ticketData.ticket.protocol} aprovada com sucesso! Liberada para atendimento.`);
+    } catch (err: any) {
+      alert(`Erro ao aprovar chamado: ${err.message}`);
+    } finally {
+      setApprovingTicket(false);
+    }
+  };
+
+  // IT action to request info / documents (Refinamento 05)
+  const handleRequestInfo = () => {
+    setMessageTab('public');
+    setMessageContent(
+      'Olá! Para que possamos dar continuidade à análise e aprovação desta solicitação, por favor utilize a opção "Editar Solicitação" neste chamado para complementar as seguintes informações e/ou anexar os documentos necessários:\n\n- '
+    );
+    const textarea = document.getElementById('ticket_response_textarea');
+    if (textarea) {
+      textarea.scrollIntoView({ behavior: 'smooth' });
+      textarea.focus();
+    }
+  };
+
+  // Requester opens edit answers modal (Refinamento 05)
+  const handleOpenEditAnswers = () => {
+    if (!ticketData) return;
+    const initial: Record<string, any> = {};
+    ticketData.answers.forEach((ans) => {
+      initial[ans.field_id] = ans.answer_value;
+    });
+    setEditedAnswers(initial);
+    setShowEditAnswersModal(true);
+  };
+
+  // Requester saves updated form answers (Refinamento 05)
+  const handleSaveEditedAnswers = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ticketData || !formVersion) return;
+
+    try {
+      setSavingAnswers(true);
+      const structuredAnswers = formVersion.fields_schema.map((f) => ({
+        field_id: f.id,
+        field_label: f.label,
+        field_type: f.type,
+        answer_value: editedAnswers[f.id] ?? null,
+      }));
+
+      await ticketService.updateTicketAnswers(ticketId, structuredAnswers, currentUser);
+      setShowEditAnswersModal(false);
+      await loadTicket();
+      onTicketUpdated();
+      alert('Informações e anexos da solicitação atualizados com sucesso!');
+    } catch (err: any) {
+      alert(`Erro ao atualizar formulário: ${err.message}`);
+    } finally {
+      setSavingAnswers(false);
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: '60px 0' }}>
@@ -179,6 +301,12 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
 
   const { ticket, answers, messages, events, canViewInternalNotes, canActOnTicket, isSuperAdmin } = ticketData;
 
+  const isRequester = ticket.requester_id === currentUser.id;
+  const isAwaitingApproval = ticket.status === 'aguardando_aprovacao';
+
+  // Check if there was an IT approval event
+  const approvalEvent = events.find((e) => e.action_type === 'aprovacao_ti');
+
   const publicMessages = messages.filter((m) => !m.is_internal);
   const internalMessages = messages.filter((m) => m.is_internal);
 
@@ -191,6 +319,8 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
           alignItems: 'center',
           justifyContent: 'space-between',
           marginBottom: 16,
+          flexWrap: 'wrap',
+          gap: 10,
         }}
       >
         <button className="btn btn-ghost btn-sm" onClick={onBack} style={{ paddingLeft: 0 }}>
@@ -198,41 +328,87 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
         </button>
 
         {/* Operational Actions */}
-        <div style={{ display: 'flex', gap: 10 }}>
-          {/* Assumir: qualquer atendente autorizado pode assumir, mesmo se já atribuído a outro */}
-          {canActOnTicket &&
-            ticket.assigned_to !== currentUser.id &&
-            !['resolvido', 'fechado', 'cancelado'].includes(ticket.status) && (
-              <button className="btn btn-accent btn-sm" onClick={handleClaim}>
-                <UserCheck size={16} />
-                {ticket.assigned_to ? 'Assumir de ' + (ticket.assignee?.name?.split(' ')[0] || 'outro') : 'Assumir Chamado'}
-              </button>
-            )}
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* FLOW: AGUARDANDO APROVAÇÃO (Refinamento 05) */}
+          {isAwaitingApproval ? (
+            <>
+              {/* Solicitante: Editar solicitação antes da aprovação */}
+              {isRequester && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleOpenEditAnswers}
+                  title="Editar respostas ou adicionar anexos complementares"
+                >
+                  <Edit3 size={15} /> Editar Solicitação
+                </button>
+              )}
 
-          {/* Admin: Designar / Redistribuir para qualquer atendente da caixa (Spec 9.3) */}
-          {isSuperAdmin && (
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={() => {
-                setSelectedAssigneeId(ticket.assigned_to || '');
-                setShowAssignModal(true);
-              }}
-            >
-              <UserPlus size={16} /> Designar Responsável
-            </button>
-          )}
+              {/* Equipe da TI / Admin: Solicitar informações ou comprovantes */}
+              {canActOnTicket && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleRequestInfo}
+                  title="Enviar mensagem solicitando esclarecimentos ou documentação ao colaborador"
+                >
+                  <MessageSquare size={15} /> Solicitar Informações / Comprovantes
+                </button>
+              )}
 
-          {/* Alterar status */}
-          {canActOnTicket && (
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={() => {
-                setTargetStatus(ticket.status);
-                setShowStatusModal(true);
-              }}
-            >
-              Alterar Status ({ticket.status})
-            </button>
+              {/* Equipe da TI / Admin: Aprovar solicitação */}
+              {canActOnTicket && (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={handleApproveTicket}
+                  disabled={approvingTicket}
+                  style={{ background: '#16a34a', borderColor: '#15803d' }}
+                  title="Liberar o chamado para atendimento normal pela equipe"
+                >
+                  <CheckCircle2 size={16} /> Aprovar Solicitação
+                </button>
+              )}
+            </>
+          ) : (
+            /* FLOW NORMAL: Chamado já aprovado ou em atendimento */
+            <>
+              {/* Assumir: qualquer atendente autorizado pode assumir, mesmo se já atribuído a outro */}
+              {canActOnTicket &&
+                ticket.assigned_to !== currentUser.id &&
+                !['resolvido', 'fechado', 'cancelado'].includes(ticket.status) && (
+                  <button className="btn btn-accent btn-sm" onClick={handleClaim}>
+                    <UserCheck size={16} />
+                    {ticket.assigned_to ? 'Assumir de ' + (ticket.assignee?.name?.split(' ')[0] || 'outro') : 'Assumir Chamado'}
+                  </button>
+                )}
+
+              {/* Admin: Designar / Redistribuir para qualquer atendente da caixa (Spec 9.3) */}
+              {isSuperAdmin && (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    setSelectedAssigneeId(ticket.assigned_to || '');
+                    setShowAssignModal(true);
+                  }}
+                >
+                  <UserPlus size={16} /> Designar Responsável
+                </button>
+              )}
+
+              {/* Alterar status (apenas para chamados fora de aprovação) */}
+              {canActOnTicket && (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    setTargetStatus(ticket.status);
+                    setShowStatusModal(true);
+                  }}
+                >
+                  Alterar Status ({formatStatusLabel(ticket.status)})
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -243,7 +419,7 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {/* Ticket Header Card */}
           <div className="card">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
               <span
                 style={{
                   fontFamily: 'var(--font-mono)',
@@ -256,7 +432,7 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
                 {ticket.protocol}
               </span>
               <span className={`badge badge-${ticket.status}`}>
-                {ticket.status}
+                {formatStatusLabel(ticket.status)}
               </span>
               <span
                 className="badge"
@@ -278,6 +454,11 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
               >
                 {ticket.priority}
               </span>
+              {ticket.department && (
+                <span className="badge badge-open" style={{ fontSize: '0.7rem' }}>
+                  {ticket.department.name} ({ticket.department.code})
+                </span>
+              )}
             </div>
 
             <h1 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: 8 }}>
@@ -288,13 +469,95 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
               Aberto em {new Date(ticket.created_at).toLocaleString('pt-BR')} por{' '}
               <strong>{ticket.requester_name}</strong> ({ticket.requester_email})
             </div>
+
+            {/* Approval Info Banner (Refinamento 05) */}
+            {isAwaitingApproval && (
+              <div
+                style={{
+                  marginTop: 14,
+                  padding: '12px 16px',
+                  background: '#fef3c7',
+                  border: '1px solid #fde68a',
+                  borderRadius: 'var(--radius-md)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                }}
+              >
+                <Clock size={20} color="#b45309" style={{ flexShrink: 0 }} />
+                <div style={{ fontSize: '0.82rem', color: '#92400e', lineHeight: 1.4 }}>
+                  <strong>Solicitação Aguardando Aprovação da TI:</strong>{' '}
+                  {isRequester
+                    ? 'Seu chamado está sob análise da equipe técnica. Enquanto estiver nesta etapa, você pode editar informações ou incluir comprovantes caso necessário.'
+                    : 'Esta solicitação precisa de análise e aprovação da equipe técnica para ser liberada para o atendimento.'}
+                </div>
+              </div>
+            )}
+
+            {/* Approved by TI indicator */}
+            {!isAwaitingApproval && approvalEvent && (
+              <div
+                style={{
+                  marginTop: 14,
+                  padding: '10px 14px',
+                  background: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                  borderRadius: 'var(--radius-md)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                <ShieldCheck size={18} color="#15803d" style={{ flexShrink: 0 }} />
+                <div style={{ fontSize: '0.8rem', color: '#166534' }}>
+                  <strong>Aprovado pela TI:</strong> {approvalEvent.description} em{' '}
+                  {new Date(approvalEvent.created_at).toLocaleString('pt-BR')}.
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Form Answers Card */}
           <div className="card">
-            <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--mtp-navy-primary)', marginBottom: 14 }}>
-              Dados do Formulário Submetido
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <div>
+                <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--mtp-navy-primary)' }}>
+                  Dados do Formulário Submetido
+                </h3>
+                {ticket.service_type && (
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    Serviço: <strong>{ticket.service_type.name}</strong>
+                  </div>
+                )}
+              </div>
+
+              {/* Botão de edição para solicitante se estiver aguardando aprovação */}
+              {isAwaitingApproval && isRequester && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleOpenEditAnswers}
+                  style={{ fontSize: '0.78rem' }}
+                >
+                  <Edit3 size={14} /> Editar Respostas
+                </button>
+              )}
+
+              {/* Indicador de bloqueio se já aprovado */}
+              {!isAwaitingApproval && (
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    color: 'var(--text-muted)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                  }}
+                >
+                  <Lock size={12} /> Formulário bloqueado após aprovação
+                </span>
+              )}
+            </div>
 
             {answers.length === 0 ? (
               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
@@ -302,30 +565,49 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
               </p>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                {answers.map((ans) => (
-                  <div
-                    key={ans.id}
-                    style={{
-                      background: 'var(--bg-main)',
-                      borderRadius: 'var(--radius-md)',
-                      padding: '10px 14px',
-                      border: '1px solid var(--border-light)',
-                    }}
-                  >
-                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-                      {ans.field_label}
+                {answers.map((ans) => {
+                  const isFile = ans.field_type === 'file' || (typeof ans.answer_value === 'object' && ans.answer_value?.name);
+
+                  return (
+                    <div
+                      key={ans.id}
+                      style={{
+                        background: 'var(--bg-main)',
+                        borderRadius: 'var(--radius-md)',
+                        padding: '12px 14px',
+                        border: '1px solid var(--border-light)',
+                      }}
+                    >
+                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4 }}>
+                        {ans.field_label}
+                      </div>
+
+                      {isFile ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                          <Paperclip size={16} color="var(--mtp-blue-primary)" />
+                          <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--mtp-navy-primary)' }}>
+                            {ans.answer_value?.name || 'Arquivo anexado'}
+                          </div>
+                          {ans.answer_value?.size && (
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                              ({Math.round(ans.answer_value.size / 1024)} KB)
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 500 }}>
+                          {typeof ans.answer_value === 'boolean'
+                            ? ans.answer_value
+                              ? 'Sim'
+                              : 'Não'
+                            : typeof ans.answer_value === 'object' && ans.answer_value !== null
+                            ? ans.answer_value.name || JSON.stringify(ans.answer_value)
+                            : ans.answer_value || '-'}
+                        </div>
+                      )}
                     </div>
-                    <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', marginTop: 4, fontWeight: 500 }}>
-                      {typeof ans.answer_value === 'boolean'
-                        ? ans.answer_value
-                          ? 'Sim'
-                          : 'Não'
-                        : typeof ans.answer_value === 'object' && ans.answer_value !== null
-                        ? ans.answer_value.name || JSON.stringify(ans.answer_value)
-                        : ans.answer_value || '-'}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -338,105 +620,86 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
                 display: 'flex',
                 borderBottom: '1px solid var(--border-light)',
                 marginBottom: 16,
-                gap: 16,
               }}
             >
               <button
                 type="button"
-                className="btn btn-ghost"
                 style={{
-                  padding: '8px 4px',
-                  borderRadius: 0,
-                  borderBottom: messageTab === 'public' ? '2px solid var(--mtp-navy-primary)' : 'none',
-                  color: messageTab === 'public' ? 'var(--mtp-navy-primary)' : 'var(--text-muted)',
+                  padding: '8px 16px',
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: messageTab === 'public' ? '2px solid var(--mtp-navy-primary)' : '2px solid transparent',
                   fontWeight: messageTab === 'public' ? 700 : 500,
+                  color: messageTab === 'public' ? 'var(--mtp-navy-primary)' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
                 }}
                 onClick={() => setMessageTab('public')}
               >
-                <MessageSquare size={16} />
                 Respostas Públicas ({publicMessages.length})
               </button>
 
-              {/* Only attendants and admin can see Internal Notes Tab */}
               {canViewInternalNotes && (
                 <button
                   type="button"
-                  className="btn btn-ghost"
                   style={{
-                    padding: '8px 4px',
-                    borderRadius: 0,
-                    borderBottom: messageTab === 'internal' ? '2px solid #8b5cf6' : 'none',
-                    color: messageTab === 'internal' ? '#8b5cf6' : 'var(--text-muted)',
+                    padding: '8px 16px',
+                    background: 'none',
+                    border: 'none',
+                    borderBottom: messageTab === 'internal' ? '2px solid var(--mtp-navy-primary)' : '2px solid transparent',
                     fontWeight: messageTab === 'internal' ? 700 : 500,
+                    color: messageTab === 'internal' ? 'var(--mtp-navy-primary)' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
                   }}
                   onClick={() => setMessageTab('internal')}
                 >
-                  <Lock size={16} />
-                  Notas Internas ({internalMessages.length})
+                  <Lock size={14} /> Notas Internas ({internalMessages.length})
                 </button>
               )}
             </div>
 
-            {/* Internal Note Banner for Attendants */}
-            {messageTab === 'internal' && (
-              <div
-                style={{
-                  background: '#f5f3ff',
-                  border: '1px solid #ddd6fe',
-                  borderRadius: 'var(--radius-md)',
-                  padding: '10px 14px',
-                  fontSize: '0.8rem',
-                  color: '#6d28d9',
-                  marginBottom: 16,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
-              >
-                <Lock size={16} />
-                <strong>Área Confidencial:</strong> Notas internas são visíveis apenas para atendentes autorizados e administradores. O solicitante nunca terá acesso.
-              </div>
-            )}
-
-            {/* Message Thread */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
+            {/* Messages Thread */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 20 }}>
               {(messageTab === 'public' ? publicMessages : internalMessages).length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                  Nenhuma mensagem registrada nesta aba ainda.
-                </div>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', padding: '12px 0' }}>
+                  {messageTab === 'public'
+                    ? 'Nenhuma mensagem pública registrada ainda.'
+                    : 'Nenhuma nota interna registrada pela equipe.'}
+                </p>
               ) : (
                 (messageTab === 'public' ? publicMessages : internalMessages).map((msg) => (
                   <div
                     key={msg.id}
                     style={{
-                      border: msg.is_internal ? '1px solid #ddd6fe' : '1px solid var(--border-light)',
+                      background: msg.is_internal ? '#fffbeb' : '#ffffff',
+                      border: msg.is_internal ? '1px solid #fde68a' : '1px solid var(--border-light)',
                       borderRadius: 'var(--radius-md)',
                       padding: '12px 16px',
-                      background: msg.is_internal ? '#faf5ff' : '#ffffff',
                     }}
                   >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        marginBottom: 6,
-                        fontSize: '0.8rem',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <strong style={{ color: 'var(--mtp-navy-primary)' }}>{msg.author_name}</strong>
-                        <span style={{ color: 'var(--text-muted)' }}>({msg.author_email})</span>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--mtp-navy-primary)' }}>
+                          {msg.author_name}
+                        </span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          ({msg.author_email})
+                        </span>
                         {msg.is_internal && (
-                          <span className="badge" style={{ background: '#ede9fe', color: '#6d28d9' }}>
+                          <span className="badge" style={{ fontSize: '0.65rem', background: '#fef3c7', color: '#92400e' }}>
                             Nota Interna
                           </span>
                         )}
                       </div>
-                      <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                         {new Date(msg.created_at).toLocaleString('pt-BR')}
                       </span>
                     </div>
+
                     <div style={{ fontSize: '0.875rem', color: 'var(--text-primary)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
                       {msg.content}
                     </div>
@@ -445,130 +708,133 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
               )}
             </div>
 
-            {/* Reply Input Box */}
+            {/* Message Input Box */}
             <form onSubmit={handleSendMessage}>
-              <label className="label">
-                {messageTab === 'public' ? 'Responder ao Solicitante / Equipe' : 'Adicionar Nova Nota Interna'}
-              </label>
-              <textarea
-                className="textarea"
-                style={{ minHeight: 80, marginBottom: 10 }}
-                placeholder={
-                  messageTab === 'public'
-                    ? 'Digite sua resposta pública aqui...'
-                    : 'Escreva anotações internas da equipe de atendimento...'
-                }
-                value={messageContent}
-                onChange={(e) => setMessageContent(e.target.value)}
-                disabled={submittingMessage}
-                required
-              />
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <div style={{ marginBottom: 10 }}>
+                <textarea
+                  id="ticket_response_textarea"
+                  className="textarea"
+                  rows={3}
+                  placeholder={
+                    messageTab === 'public'
+                      ? 'Escreva uma resposta visível para o solicitante e equipe...'
+                      : 'Escreva uma nota interna estritamente confidencial (não visível ao solicitante)...'
+                  }
+                  value={messageContent}
+                  onChange={(e) => setMessageContent(e.target.value)}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  {messageTab === 'public'
+                    ? 'Resposta visível a todos os envolvidos no chamado.'
+                    : 'Nota interna estritamente confidencial para a equipe.'}
+                </span>
+
                 <button
                   type="submit"
-                  className={`btn ${messageTab === 'internal' ? 'btn-secondary' : 'btn-primary'} btn-sm`}
+                  className="btn btn-primary btn-sm"
                   disabled={submittingMessage || !messageContent.trim()}
                 >
-                  <Send size={14} />
-                  {submittingMessage ? 'Enviando...' : messageTab === 'internal' ? 'Salvar Nota Interna' : 'Enviar Resposta'}
+                  <Send size={14} /> Enviar {messageTab === 'public' ? 'Resposta' : 'Nota'}
                 </button>
               </div>
             </form>
           </div>
         </div>
 
-        {/* Right Column: Meta details, Responsible Agent, Timeline */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Metadata Card */}
-          <div className="card" style={{ padding: '16px' }}>
-            <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 12 }}>
-              Informações do Chamado
-            </h4>
+        {/* Right Column: Ticket Sidebar / Meta & History */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Assignment & Operational Status Card */}
+          <div className="card">
+            <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--mtp-navy-primary)', marginBottom: 14 }}>
+              Responsável Principal
+            </h3>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: '0.85rem' }}>
-              <div>
-                <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem' }}>Departamento</span>
-                <strong style={{ color: 'var(--mtp-navy-primary)' }}>{ticket.department?.name} ({ticket.department?.code})</strong>
-              </div>
-
-              <div>
-                <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem' }}>Tipo de Solicitação</span>
-                <strong>{ticket.service_type?.name}</strong>
-              </div>
-
-              <div>
-                <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem' }}>Responsável Principal</span>
-                {ticket.assignee ? (
+            {ticket.assigned_to && ticket.assignee ? (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: '50%',
+                      background: 'var(--mtp-navy-primary)',
+                      color: '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: 700,
+                      fontSize: '0.85rem',
+                    }}
+                  >
+                    {ticket.assignee.name.charAt(0).toUpperCase()}
+                  </div>
                   <div>
-                    <strong style={{ color: 'var(--mtp-navy-primary)' }}>{ticket.assignee.name}</strong>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                      {ticket.assignee.name}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                       {ticket.assignee.email}
                     </div>
-                    {/* Atendente autorizado pode assumir de outro */}
-                    {canActOnTicket &&
-                      ticket.assigned_to !== currentUser.id &&
-                      !['resolvido', 'fechado', 'cancelado'].includes(ticket.status) && (
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          style={{ marginTop: 8, fontSize: '0.75rem' }}
-                          onClick={handleClaim}
-                        >
-                          <UserCheck size={12} /> Assumir este chamado
-                        </button>
-                      )}
-                    {/* Você é o responsável atual */}
-                    {ticket.assigned_to === currentUser.id && (
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          marginTop: 6,
-                          fontSize: '0.72rem',
-                          background: 'rgba(91,178,221,0.15)',
-                          color: 'var(--mtp-navy-primary)',
-                          borderRadius: 'var(--radius-sm)',
-                          padding: '2px 8px',
-                          fontWeight: 600,
-                        }}
-                      >
-                        Você é o responsável
-                      </span>
-                    )}
                   </div>
-                ) : (
-                  <div>
-                    <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Fila não atribuída</span>
-                    {canActOnTicket && !['resolvido', 'fechado', 'cancelado'].includes(ticket.status) && (
-                      <button
-                        className="btn btn-accent btn-sm"
-                        style={{ display: 'block', marginTop: 8, fontSize: '0.75rem' }}
-                        onClick={handleClaim}
-                      >
-                        <UserCheck size={12} /> Assumir Chamado
-                      </button>
-                    )}
+                </div>
+
+                {ticket.assigned_to === currentUser.id && (
+                  <div
+                    className="badge"
+                    style={{
+                      background: 'var(--mtp-blue-light)',
+                      color: 'var(--mtp-navy-primary)',
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      display: 'inline-block',
+                      marginBottom: 8,
+                    }}
+                  >
+                    Você é o responsável
                   </div>
                 )}
               </div>
-
-              <div>
-                <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem' }}>Última Atualização</span>
-                <span>{new Date(ticket.updated_at).toLocaleString('pt-BR')}</span>
+            ) : (
+              <div style={{ marginBottom: 14 }}>
+                <span className="badge badge-waiting" style={{ fontSize: '0.75rem' }}>
+                  Fila Geral (Não Atribuído)
+                </span>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 6 }}>
+                  Chamado disponível na fila compartilhada do departamento.
+                </p>
               </div>
-            </div>
+            )}
           </div>
 
-          {/* Timeline / Audit Trail Card */}
-          <div className="card" style={{ padding: '16px' }}>
-            <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 12 }}>
-              Histórico de Eventos
-            </h4>
+          {/* Timeline & Audit Events Card */}
+          <div className="card">
+            <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--mtp-navy-primary)', marginBottom: 14 }}>
+              Histórico do Chamado ({events.length})
+            </h3>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 320, overflowY: 'auto' }}>
-              {events.map((ev) => (
-                <div key={ev.id} style={{ fontSize: '0.775rem', borderLeft: '2px solid var(--border-light)', paddingLeft: 10 }}>
-                  <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{ev.description}</div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginTop: 2 }}>
-                    {new Date(ev.created_at).toLocaleString('pt-BR')}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {events.map((evt) => (
+                <div key={evt.id} style={{ display: 'flex', gap: 10, fontSize: '0.8rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <div
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        background: evt.action_type === 'aprovacao_ti' ? '#16a34a' : 'var(--mtp-blue-primary)',
+                        marginTop: 4,
+                      }}
+                    />
+                    <div style={{ width: 1, flex: 1, background: 'var(--border-light)', minHeight: 16 }} />
+                  </div>
+                  <div style={{ paddingBottom: 6 }}>
+                    <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{evt.description}</div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                      {new Date(evt.created_at).toLocaleString('pt-BR')} • {evt.actor_name}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -577,36 +843,85 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({
         </div>
       </div>
 
-      {/* Assign Modal (Super Admin) */}
+      {/* Edit Answers Modal (Refinamento 05 — Solicitante) */}
+      {showEditAnswersModal && formVersion && (
+        <div className="modal-overlay" onClick={() => setShowEditAnswersModal(false)}>
+          <div
+            className="modal-content"
+            style={{ maxWidth: 680, maxHeight: '90vh', overflowY: 'auto' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--mtp-navy-primary)' }}>
+                  Editar Solicitação
+                </h3>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  Atualize suas respostas e adicione comprovantes enquanto o chamado aguarda aprovação da TI.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowEditAnswersModal(false)}
+                style={{ padding: 4 }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditedAnswers} style={{ padding: 20 }}>
+              <div style={{ marginBottom: 20 }}>
+                <FormRenderer
+                  fields={formVersion.fields_schema}
+                  values={editedAnswers}
+                  onChange={(fieldId, val) => setEditedAnswers((prev) => ({ ...prev, [fieldId]: val }))}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, borderTop: '1px solid var(--border-light)', paddingTop: 14 }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setShowEditAnswersModal(false)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary btn-sm"
+                  disabled={savingAnswers}
+                >
+                  {savingAnswers ? 'Salvando...' : 'Salvar Alterações'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Modal (Admin only) */}
       {showAssignModal && (
         <div className="modal-overlay" onClick={() => setShowAssignModal(false)}>
           <div className="modal-content" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
             <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-light)' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Designar Responsável pelo Chamado</h3>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                Caixa: {ticket.department?.name}
-              </p>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Designar Responsável Principal</h3>
             </div>
             <form onSubmit={handleAssignSubmit} style={{ padding: 20 }}>
               <div style={{ marginBottom: 14 }}>
-                <label className="label">Atendente autorizado da caixa</label>
+                <label className="label">Atendente Autorizado da Caixa</label>
                 <select
                   className="select"
                   value={selectedAssigneeId}
                   onChange={(e) => setSelectedAssigneeId(e.target.value)}
                 >
-                  <option value="">Devolver para a fila geral (Não atribuído)</option>
+                  <option value="">Devolver para Fila Coletiva (Não Atribuído)</option>
                   {departmentAttendants.map((mem) => (
                     <option key={mem.user_id} value={mem.user_id}>
                       {mem.user?.name} ({mem.user?.email})
                     </option>
                   ))}
                 </select>
-                {departmentAttendants.length === 0 && (
-                  <p className="help-text" style={{ color: '#dc2626' }}>
-                    Esta caixa não possui atendentes vinculados ainda. Cadastre atendentes na aba de Administração.
-                  </p>
-                )}
               </div>
 
               <div style={{ marginBottom: 18 }}>

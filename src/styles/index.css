@@ -196,36 +196,49 @@ body {
   line-height: 1.2;
 }
 
+.badge-aguardando_aprovacao {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+  font-weight: 600;
+}
+
+.badge-aberto,
 .badge-open {
   background: var(--status-open-bg);
   color: var(--status-open-text);
   border: 1px solid var(--status-open-border);
 }
 
+.badge-em_andamento,
 .badge-progress {
   background: var(--status-progress-bg);
   color: var(--status-progress-text);
   border: 1px solid var(--status-progress-border);
 }
 
+.badge-aguardando_solicitante,
 .badge-waiting {
   background: var(--status-waiting-bg);
   color: var(--status-waiting-text);
   border: 1px solid var(--status-waiting-border);
 }
 
+.badge-resolvido,
 .badge-resolved {
   background: var(--status-resolved-bg);
   color: var(--status-resolved-text);
   border: 1px solid var(--status-resolved-border);
 }
 
+.badge-fechado,
 .badge-closed {
   background: var(--status-closed-bg);
   color: var(--status-closed-text);
   border: 1px solid var(--status-closed-border);
 }
 
+.badge-cancelado,
 .badge-canceled {
   background: #fef2f2;
   color: #991b1b;

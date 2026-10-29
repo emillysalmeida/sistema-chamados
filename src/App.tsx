@@ -184,7 +184,7 @@ export const App: React.FC = () => {
             setActiveTab(tab);
             setSelectedTicketId(null);
           }}
-          openTicketsCount={tickets.filter((t) => t.status === 'aberto').length}
+          openTicketsCount={tickets.filter((t) => t.status === 'aberto' || t.status === 'aguardando_aprovacao').length}
         />
 
         {/* Content View */}

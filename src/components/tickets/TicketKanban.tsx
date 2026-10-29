@@ -8,6 +8,7 @@ interface TicketKanbanProps {
 }
 
 const COLUMNS: { id: TicketStatus; label: string; color: string }[] = [
+  { id: 'aguardando_aprovacao', label: 'Aguardando Aprovação', color: '#d97706' },
   { id: 'aberto', label: 'Aberto', color: 'var(--mtp-blue-primary)' },
   { id: 'em_andamento', label: 'Em Andamento', color: '#8b5cf6' },
   { id: 'aguardando_solicitante', label: 'Aguardando Solicitante', color: '#f59e0b' },

@@ -40,6 +40,8 @@ export const TicketList: React.FC<TicketListProps> = ({
 
   const getStatusBadge = (status: TicketStatus) => {
     switch (status) {
+      case 'aguardando_aprovacao':
+        return <span className="badge badge-aguardando_aprovacao">Aguardando Aprovação</span>;
       case 'aberto':
         return <span className="badge badge-open">Aberto</span>;
       case 'em_andamento':
@@ -132,6 +134,7 @@ export const TicketList: React.FC<TicketListProps> = ({
               onChange={(e) => setStatusFilter(e.target.value)}
             >
               <option value="todos">Todos os status</option>
+              <option value="aguardando_aprovacao">Aguardando Aprovação</option>
               <option value="aberto">Aberto</option>
               <option value="em_andamento">Em Andamento</option>
               <option value="aguardando_solicitante">Aguardando Solicitante</option>
